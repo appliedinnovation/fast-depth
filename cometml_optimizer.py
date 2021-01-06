@@ -1,13 +1,15 @@
 from comet_ml import Optimizer
 import sys
-import train
 import os
 
-params_file = "./parameters.json"
+import train
+import evaluate
+
+params_file = "config/parameters.json"
 
 opt = Optimizer(sys.argv[1],
                 trials=1,
-                api_key="Bq3mQixNCv2jVzq2YBhLdxq9A")
+                api_key="jBFVYFo9VUsy0kb0lioKXfTmM")
 
 for experiment in opt.get_experiments(project_name="fastdepth"):
     params = train.get_params(params_file)
@@ -21,13 +23,20 @@ for experiment in opt.get_experiments(project_name="fastdepth"):
     params["batch_size"] = experiment.get_parameter("batch_size")
     params["optimizer"]["lr"] = experiment.get_parameter("learning_rate")
     params["optimizer"]["momentum"] = experiment.get_parameter("momentum")
-    params["optimizer"]["weight_decay"] = experiment.get_parameter("weight_decay")
+    params["optimizer"]["weight_decay"] = experiment.get_parameter(
+        "weight_decay")
 
     print("Batch Size: ", params["batch_size"])
-    print("Learning Rate: " , params["optimizer"]["lr"])
+    print("Learning Rate: ", params["optimizer"]["lr"])
     print("Momentum: ", params["optimizer"]["momentum"])
     print("Weight Decay: ", params["optimizer"]["weight_decay"])
     print("Device: ", params["device"])
+
+    try:
+        params["nyu_dataset"]
+    except KeyError:
+        params["nyu_dataset"] = False
+
 
     params, \
         train_loader, \
@@ -35,11 +44,12 @@ for experiment in opt.get_experiments(project_name="fastdepth"):
         test_loader, \
         model, \
         criterion, \
-        optimizer = train.set_up_experiment(params, experiment)
+        optimizer, \
+        scheduler = train.set_up_experiment(params, experiment)
 
     train.train(params, train_loader, val_loader,
-          model, criterion, optimizer, experiment)
+                model, criterion, optimizer, scheduler, experiment)
 
-    train.evaluate(params, test_loader, model, criterion, experiment)
+    evaluate.evaluate(params, test_loader, model, experiment)
 
     experiment.end()
