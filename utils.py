@@ -218,7 +218,10 @@ def load_model(params, resume=None):
     model_state_dict = convert_state_dict_from_gpu(model_state_dict)
 
     # Load the model
-    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    if params["encoder"] == "mobilenet":
+        model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    elif params["encoder"] == "resnet50":
+        model = models.ResNetSkipAdd(layers=50, output_size=(224, 224), pretrained=True)
     if model_state_dict:
         model.load_state_dict(model_state_dict)
 
