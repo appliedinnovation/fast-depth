@@ -222,6 +222,8 @@ def load_model(params, resume=None):
         model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
     elif params["encoder"] == "resnet50":
         model = models.ResNetSkipAdd(layers=50, output_size=(224, 224), pretrained=True)
+    elif params["encoder"] == "resnet18":
+        model = models.ResNetSkipAdd(layers=18, output_size=(224, 224), pretrained=True)
     if model_state_dict:
         model.load_state_dict(model_state_dict)
 
