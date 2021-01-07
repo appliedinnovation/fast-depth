@@ -42,6 +42,7 @@ def get_params(file):
 
 
 def set_up_experiment(params, experiment, resume=None):
+    print("Experiment: ", params["ml_experiment"])
 
     # Log hyper params to Comet
     hyper_params = {
