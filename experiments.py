@@ -15,6 +15,38 @@ I.e., do not call loss.backward() in the experiment function.
 
 '''
 
+
+''' 
+L1 Loss Experiment
+
+Goal:
+    L1 has been shown to be a very stable loss function. It produces adequate results
+    and is what was used in the original FastDepth paper. The results are not good 
+    enough though, so different experiments with L1 must be tried until it works
+
+Notes:
+- Clips to max values before calculating loss
+
+Required JSON params: 
+{
+    "depth_min" : <min>,
+    "depth_max" : <max>,
+    "loss" : "silog"
+}
+'''
+class L1LossExperiment():
+
+    def forward(self, prediction, target, criterion, params):
+
+        # Clip prediction to remove zeros and large values
+        prediction[prediction < params["depth_min"]] = params["depth_min"]
+        prediction[prediction > params["depth_max"]] = params["depth_max"]
+
+        # Calculate L1 loss
+        loss = criterion(prediction, target)
+
+        return prediction, target, loss
+
 ''' 
 Scale-Invariant Log Loss Experiment
 
@@ -52,6 +84,7 @@ class SILogLossExperiment():
 # Allows the experiment to be chosen from the parameters file
 # Consequently, each experiment must have a unique name
 GLOBAL_EXPERIMENT_DICT = {
+    "l1_loss_experiment" : L1LossExperiment(),
     "silog_loss_experiment" : SILogLossExperiment()
 }
 
