@@ -1,0 +1,28 @@
+{
+    "ml_experiment" : "silog_loss_experiment",
+    "training_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample/ConvenienceStore",
+    "test_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample/ConvenienceStore",
+    "train_val_split" : [99, 1],
+    "depth_min" : 0.1,
+    "depth_max" : 80,
+    "predict_disparity" : false,
+    "disparity_constant" : 1,
+    "random_crop" : false,
+    "batch_size" : 1,
+    "num_workers" : 1,
+    "device" : 0,
+    "loss" : "silog",
+    "optimizer" : {
+        "type" : "adamw",
+        "lr" : 0.001,
+        "weight_decay" : 0.001
+    },
+    "num_epochs" : 5,
+    "stats_frequency" : 1,
+    "save_frequency" : 10,
+    "save_dir" : "results/",
+    "max_checkpoints" : 80,
+    "lr_epoch_step_size" : 20,
+    "save_test_images" : false,
+    "save_test_metrics" : false
+}

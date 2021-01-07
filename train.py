@@ -9,14 +9,17 @@ import torch.utils.data
 import torch.optim as optim
 import torch.nn as nn
 import torch.hub
-import models
-import utils
 import matplotlib.pyplot as plt
-from metrics import AverageMeter, Result
-from dataloaders.nyu import NYUDataset
-import evaluate
 
-params_file = "parameters.json"
+# FastDepth imports
+from dataloaders.nyu import NYUDataset
+import experiments
+import evaluate
+import loss
+from metrics import AverageMeter, Result
+import models
+import optimize
+import utils
 
 # Import custom Dataset
 try:
@@ -26,11 +29,9 @@ except KeyError:
 sys.path.append(dataset_path)
 import Datasets
 
-params_file = "parameters.json"
-
 
 def get_params(file):
-    params = utils.load_config_file(params_file)
+    params = utils.load_config_file(file)
 
     # Convert from JSON format to DataLoader format
     params["training_dataset_paths"] = utils.format_dataset_path(
@@ -41,11 +42,11 @@ def get_params(file):
 
 
 def set_up_experiment(params, experiment, resume=None):
+    print("Experiment: ", params["ml_experiment"])
 
     # Log hyper params to Comet
     hyper_params = {
         "learning_rate": params["optimizer"]["lr"],
-        "momentum": params["optimizer"]["momentum"],
         "weight_decay": params["optimizer"]["weight_decay"],
         "optimizer": params["optimizer"]["type"],
         "loss": params["loss"],
@@ -56,25 +57,10 @@ def set_up_experiment(params, experiment, resume=None):
         "depth_min": params["depth_min"],
         "disparity": params["predict_disparity"],
         "disparity_constant": params["disparity_constant"],
-        "loss_on_disparity": params["loss_disparity"],
         "lr_epoch_step_size": params["lr_epoch_step_size"]
     }
     experiment.log_parameters(hyper_params)
     experiment.add_tag(params["loss"])
-
-    # Log dataset info to Comet
-    training_folders = ", ".join(params["training_dataset_paths"])
-    test_folders = ", ".join(params["test_dataset_paths"])
-    experiment.log_dataset_info(path=training_folders)
-    experiment.log_other("test_dataset_info", test_folders)
-
-    train_loader, val_loader, test_loader = load_dataset(params)
-
-    # Configure GPU
-    params["device"] = torch.device("cuda:{}".format(params["device"]) if type(
-        params["device"]) is int and torch.cuda.is_available() else "cpu")
-
-    model, optimizer_state_dict = utils.load_model(params, resume)
 
     # Create experiment directory
     if resume:
@@ -85,6 +71,22 @@ def set_up_experiment(params, experiment, resume=None):
     print("Saving results to ", experiment_dir)
     params["experiment_dir"] = experiment_dir
     experiment.log_other("saved_model_directory", experiment_dir)
+
+    # Log dataset info to Comet
+    training_folders = ", ".join(params["training_dataset_paths"])
+    test_folders = ", ".join(params["test_dataset_paths"])
+    experiment.log_dataset_info(path=training_folders)
+    experiment.log_other("test_dataset_info", test_folders)
+
+    ## Dataset ##
+    train_loader, val_loader, test_loader = load_dataset(params)
+
+    # Configure GPU
+    params["device"] = torch.device("cuda:{}".format(params["device"]) if type(
+        params["device"]) is int and torch.cuda.is_available() else "cpu")
+
+    ## Model ##
+    model, optimizer_state_dict = utils.load_model(params, resume)
 
     # Use parallel GPUs if available
     # Specify which GPUs to use on DGX
@@ -102,32 +104,13 @@ def set_up_experiment(params, experiment, resume=None):
     # This must be done before optimizer is created if a model state_dict is being loaded
     model.to(params["device"])
 
-    def log_l1_loss(output, target):
-        y = output - target
-        alpha = torch.mean(y.pow(2))
-        beta = 0.5 * (1 / output.size()[0] ** 2) * torch.sum(y).pow(2)
-        loss = alpha - beta
-        return loss
+    ## Loss ##
+    criterion = loss.get_loss(params["loss"])
+    print("Loss: ", params["loss"])
 
-    # Loss & Optimizer
-    if params["loss"] == "L2":
-        criterion = torch.nn.MSELoss()
-        print("Using L2 Loss")
-    elif params["loss"] == "log":
-        criterion = log_l1_loss
-        print("Using Log L1 Loss")
-    else:
-        criterion = torch.nn.L1Loss()
-        print("Using L1 Loss")
-
-    if params["optimizer"]["type"] == "sgd":
-        optimizer = optim.SGD(model.parameters(),
-                              lr=params["optimizer"]["lr"],
-                              momentum=params["optimizer"]["momentum"],
-                              weight_decay=params["optimizer"]["weight_decay"])
-    else:
-        optimizer = optim.Adam(model.parameters(),
-                               lr=params["optimizer"]["lr"])
+    ## Optimizer ##
+    optimizer = optimize.get_optimizer(model, params)
+    print("Optimizer: " , params["optimizer"]["type"])
 
     experiment.add_tag(params["optimizer"]["type"])
     if optimizer_state_dict:
@@ -136,7 +119,7 @@ def set_up_experiment(params, experiment, resume=None):
     # Load optimizer tensors onto GPU if necessary
     utils.optimizer_to_gpu(optimizer)
 
-    # LR Scheduler
+    ##  LR Scheduler ##
     if resume:
         scheduler = optim.lr_scheduler.StepLR(
             optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
@@ -203,14 +186,17 @@ def load_dataset(params):
 
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
+
+    # Critical section; the real experiment that is being run
+    ml_experiment = experiments.get_ml_experiment(params["ml_experiment"])
+
     mean_val_loss = -1
     try:
         train_step = int(np.ceil(
             params["num_training_examples"] / params["batch_size"]) * params["start_epoch"])
         val_step = int(np.ceil(params["num_validation_examples"] /
                            params["batch_size"] * params["start_epoch"]))
-        clip = (1.0 / params["depth_max"]
-                ) if params["predict_disparity"] else params["depth_min"]
+        
         for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 
@@ -221,35 +207,31 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
             model.train()
             with experiment.train():
-                for i, (inputs, targets) in enumerate(train_loader):
+                for i, (inputs, target) in enumerate(train_loader):
 
                     # Send data to GPU
-                    inputs, targets = inputs.to(
-                        params["device"]), targets.to(params["device"])
+                    inputs, target = inputs.to(
+                        params["device"]), target.to(params["device"])
 
                     # Zero the parameter gradients
                     optimizer.zero_grad()
 
                     # Predict
-                    outputs = model(inputs)
+                    prediction = model(inputs)
 
-                    # Flip and apply constant if necessary
-                    outputs, targets, c = utils.process_for_loss(
-                        outputs, targets, params["predict_disparity"],
-                        params["loss_disparity"], params["disparity_constant"], clip)
+                    ### CRITICAL SECTION ###
+
+                    prediction, target, loss = ml_experiment.forward(prediction, target, criterion, params)
+
+                    ### END CRITICAL SECTION ###
 
                     # Compute loss
-                    loss = criterion(outputs * c, targets * c)
                     loss.backward()
                     optimizer.step()
 
-                    # Flip back if necessary
-                    outputs, targets = utils.convert_to_depth(
-                        outputs, targets, params["predict_disparity"], params["loss_disparity"], clip)
-
                     # Calculate metrics
                     result = Result()
-                    result.evaluate(outputs.data, targets.data)
+                    result.evaluate(prediction.data, target.data)
                     average.update(result, 0, 0, inputs.size(0))
                     epoch_loss += loss.item()
 
@@ -284,28 +266,22 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                 with torch.no_grad():
                     img_idxs = np.random.randint(0, len(val_loader), size=5)
                     model.eval()
-                    for i, (inputs, targets) in enumerate(val_loader):
-                        inputs, targets = inputs.to(
-                            params["device"]), targets.to(params["device"])
+                    for i, (inputs, target) in enumerate(val_loader):
+                        inputs, target = inputs.to(
+                            params["device"]), target.to(params["device"])
 
                         # Predict
-                        outputs = model(inputs)
+                        prediction = model(inputs)
 
-                        # Flip and apply constant if necessary
-                        outputs, targets, c = utils.process_for_loss(
-                            outputs, targets, params["predict_disparity"],
-                            params["loss_disparity"], params["disparity_constant"], clip)
+                        ### CRITICAL SECTION ###
 
-                        # Compute loss
-                        loss = criterion(outputs * c, targets * c)
+                        prediction, target, loss = ml_experiment.forward(prediction, target, criterion, params)
 
-                        # Flip back if necessary
-                        outputs, targets = utils.convert_to_depth(
-                            outputs, targets, params["predict_disparity"], params["loss_disparity"], clip)
+                        ### END CRITICAL SECTION ###
 
                         # Calculate metrics
                         result = Result()
-                        result.evaluate(outputs.data, targets.data)
+                        result.evaluate(prediction.data, target.data)
                         average.update(result, 0, 0, inputs.size(0))
                         epoch_loss += loss.item()
 
@@ -377,7 +353,8 @@ def main(args):
     if args.name:
         experiment.set_name(args.name)
 
-    params = get_params(params_file)
+    config_file = args.config
+    params = get_params(config_file)
     params["nyu_dataset"] = args.nyu
 
     params, train_loader, val_loader, test_loader, \
@@ -393,6 +370,8 @@ def main(args):
 if __name__ == "__main__":
     # Parse command args
     parser = argparse.ArgumentParser(description='FastDepth Training')
+    parser.add_argument('--config', '-c', type=str, default=None, required=True,
+                        help="Filename of parameters configuration JSON.")
     parser.add_argument('--resume', type=str, default=None,
                         help="Path to model checkpoint to resume training.")
     parser.add_argument('-t', '--tag', type=str, default=None,
