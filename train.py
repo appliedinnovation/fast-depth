@@ -104,6 +104,8 @@ def set_up_experiment(params, experiment, resume=None):
     # This must be done before optimizer is created if a model state_dict is being loaded
     model.to(params["device"])
 
+    print("Encoder: ", params["encoder"])
+
     ## Loss ##
     criterion = loss.get_loss(params["loss"])
     print("Loss: ", params["loss"])
@@ -243,9 +245,9 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(
-                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, result, "train", train_step)
+                            inputs[0], target[0], prediction[0], current_epoch, i, experiment, result, "train", train_step)
                         utils.log_raw_image_to_comet(
-                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train", train_step)
+                            inputs[0], target[0], prediction[0], current_epoch, i, experiment, "train", train_step)
 
                     # Print statistics
                     running_loss += loss.item()
@@ -293,9 +295,9 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Log images to Comet
                         if i in img_idxs:
                             utils.log_image_to_comet(
-                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, result, "val", val_step)
+                                inputs[0], target[0], prediction[0], current_epoch, i, experiment, result, "val", val_step)
                             utils.log_raw_image_to_comet(
-                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val", train_step)
+                            inputs[0], target[0], prediction[0], current_epoch, i, experiment, "val", train_step)
 
                     # Log epoch metrics to Comet
                     mean_val_loss = epoch_loss / len(val_loader)
