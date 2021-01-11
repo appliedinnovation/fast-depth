@@ -344,6 +344,9 @@ def main(args):
         experiment_key = input("Enter Comet ML key of experiment to resume:")
         experiment = ExistingExperiment(
             api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=experiment_key)
+    elif args.no_comet:
+        experiment = Experiment(
+            api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="test-runs")
     else:
         experiment = Experiment(
             api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
@@ -380,5 +383,6 @@ if __name__ == "__main__":
                         help='Comet ML Experiment name')
     parser.add_argument('--nyu', type=int, default=0,
                         help='whether to use NYU Depth V2 dataset.')
+    parser.add_argument('--no-comet', action='store_true')
     args = parser.parse_args()
     main(args)
