@@ -50,21 +50,20 @@ class BerhuLoss(nn.Module):
             target = target[mask]
 
         # Absolute difference
-        diff = torch.abs(input.view(-1) - target.view(-1))
-        torch.flatten(diff)
-        torch.sort(diff)
+        diff = torch.abs(input - target)
 
-        # Threshold
+        # Threshold term
         c = 0.2 * torch.max(diff)
 
         # Berhu term
         diff_square = (torch.square(diff) + torch.square(c)) / (2 * c)
 
         diff_square[diff <= c] = 0
-        diff[diff > c] = 0
-        diff += diff_square
-        loss = torch.mean(diff)
-
+        diff_copy = diff.clone()
+        diff_copy[diff_copy > c] = 0
+        diff_copy += diff_square
+        
+        loss = torch.mean(diff_copy)
         return loss
 
 
