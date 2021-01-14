@@ -7,6 +7,7 @@ import models
 
 parser = argparse.ArgumentParser(description='FastDepth evaluation')
 parser.add_argument('-m', '--model', type=str, required=True, help="Path to model.")
+parser.add_argument('--resnet18', action='store_true')
 parser.add_argument('--save-gpu', action='store_true')
 parser.add_argument('--nyu', action='store_true')
 args = parser.parse_args()
@@ -19,7 +20,10 @@ if args.nyu:
 else:
     model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
     model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
-    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    if args.resnet18:
+        model = models.ResNetSkipAdd(layers=18, output_size=(224, 224), pretrained=True)
+    else:
+        model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
     if model_state_dict:
         model.load_state_dict(model_state_dict)
 
