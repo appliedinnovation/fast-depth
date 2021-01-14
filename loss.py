@@ -67,8 +67,6 @@ class BerhuLoss(nn.Module):
         return loss
 
 
-# Read about autograd and make sure gradients can be correctly
-# calculated
 class SIGradientLoss(nn.Module):
     def __init__(self):
         super(SIGradientLoss, self).__init__()
@@ -77,12 +75,12 @@ class SIGradientLoss(nn.Module):
     # Shift input along the specified axis
     # Set to zero the values that were rolled over to the end
     def _roll(self, input, shift, axis):
-        input_shifted = np.roll(input, shift=shift, axis=axis)
+        input_shifted = torch.roll(input, shifts=shift, dims=axis)
         self._set_end_zero(input_shifted, shift, axis)
         return input_shifted
 
-    def _normalized_gradient(self, input, step):
-        return (step - input) / torch.abs(step + input)
+    def _normalized_gradient(self, input, step, eps=1e-8):
+        return (step - input) / torch.abs(step + input + eps)
 
     def _set_end_zero(self, input, idx_from_end, axis):
         if axis == -1:
@@ -100,8 +98,8 @@ class SIGradientLoss(nn.Module):
         self._set_end_zero(gx, shift, -2)
         self._set_end_zero(gy, shift, -1)
         return gx, gy
-
-    def forward(self, input, target, mask=None):
+    
+    def  forward(self, input, target, mask=None):
         assert input.shape == target.shape
 
         if mask is not None:
@@ -110,19 +108,20 @@ class SIGradientLoss(nn.Module):
 
         scales = [1, 2, 4, 8, 16]
 
-        sum_loss = torch.zeros(size=(1,), requires_grad=True)
-        for s in scales:
+        losses = torch.empty(size=(len(scales),))
+        for i, s in enumerate(scales):
 
             # Calculate gradients
             gx_input, gy_input = self._calculate_g(input, shift=s)
             gx_target, gy_target = self._calculate_g(target, shift=s)
 
-            g_input = np.array([gx_input.numpy(), gy_input.numpy()], copy=False)
-            g_target = np.array([gx_target.numpy(), gy_target.numpy()], copy=False)
+            # Concatenate gradients
+            g_input = torch.cat((gx_input, gy_input), 0)
+            g_target = torch.cat((gx_target, gy_target), 0)
 
-            sum_loss += torch.norm(torch.as_tensor(g_input - g_target))
+            losses[i] = torch.norm(g_input - g_target)
 
-        return torch.div(sum_loss, len(scales))
+        return torch.mean(losses)
 
 
 # class NormalLoss(nn.Module):
