@@ -156,4 +156,19 @@ class NormalLoss(nn.Module):
 
         losses = 1 - numerator / denominator
         return torch.mean(losses) 
+
+class GlobalFocalRelativeLoss(nn.Module):
+    def __init__(self):
+        super(GlobalFocalRelativeLoss, self).__init__()
+        self.name = "GFRL"
+    
+    def forward(self, input, target, mask=None):
+        assert input.shape = target.shape
+
+        if mask is not None:
+            input = input[mask]
+            target = target[mask]
+
+        # Divide image into nxn blocks
+        n = 16
         
