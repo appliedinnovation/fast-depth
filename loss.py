@@ -11,7 +11,8 @@ def get_loss(loss_str):
         "l2": torch.nn.MSELoss(),
         "silog": SILogLoss(),
         "berhu": BerhuLoss(),
-        "sigradient": SIGradientLoss()
+        "sigradient": SIGradientLoss(),
+        "normal" : NormalLoss()
     }
 
     return loss_dict[loss_str]
@@ -142,8 +143,8 @@ class NormalLoss(nn.Module):
         grad_target = KF.spatial_gradient(target, mode='sobel')
 
         # Create homogeneous column vectors
-        n_input = torch.cat((-grad_input.view(-1), torch.Tensor([1])))
-        n_target = torch.cat((-grad_target.view(-1), torch.Tensor([1])))
+        n_input = torch.cat((-grad_input.view(-1), torch.ones([1,], dtype=torch.float32, device=grad_input.device)))
+        n_target = torch.cat((-grad_target.view(-1), torch.ones([1,], dtype=torch.float32, device=grad_target.device)))
 
         # Inner product of prediction and target
         numerator = torch.dot(n_input, n_target)
