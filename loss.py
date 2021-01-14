@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import kornia.filters as KF
 import utils
 
 
@@ -124,17 +125,34 @@ class SIGradientLoss(nn.Module):
         return torch.mean(losses)
 
 
-# class NormalLoss(nn.Module):
-    # def __init__(self):
-        # super(NormalLoss, self).__init__()
-        # self.name = "Normal"
-#
-    # def forward(self, input, target, mask=None):
-        # if mask is not None:
-        # input = input[mask]
-        # target = target[mask]
-#
-        # for pred, depth in zip(input, target):
-        # for pred_row, depth_row in zip(pred[0], depth[0]):
-        # for pred_pixel, depth_pixel in zip(pred_row, depth_row):
-        # normal_pred =
+class NormalLoss(nn.Module):
+    def __init__(self):
+        super(NormalLoss, self).__init__()
+        self.name = "Normal"
+
+    def forward(self, input, target, mask=None):
+        assert input.shape == target.shape
+
+        if mask is not None:
+            input = input[mask]
+            target = target[mask]
+
+        # Calculate spatial depth gradient
+        grad_input = KF.spatial_gradient(input, mode='sobel')
+        grad_target = KF.spatial_gradient(target, mode='sobel')
+
+        # Create homogeneous column vectors
+        n_input = torch.cat((-grad_input.view(-1), torch.Tensor([1])))
+        n_target = torch.cat((-grad_target.view(-1), torch.Tensor([1])))
+
+        # Inner product of prediction and target
+        numerator = torch.dot(n_input, n_target)
+
+        # Normalize by vector magnitudes
+        d1 = torch.sqrt(torch.dot(n_input, n_input))
+        d2 = torch.sqrt(torch.dot(n_target, n_target))
+        denominator = torch.mul(d1, d2)
+
+        losses = 1 - numerator / denominator
+        return torch.mean(losses) 
+        

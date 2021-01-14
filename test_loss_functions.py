@@ -41,4 +41,14 @@ target = torch.tensor([[[1.4, 4.8, 3.2, 0.9],
                         
 sigradient_loss = loss.SIGradientLoss()
 sigradient_loss_output = sigradient_loss(prediction, target)
-print(sigradient_loss_output)
+assert torch.abs(sigradient_loss_output - 1.727) < 0.001
+
+# Normal loss
+prediction = torch.unsqueeze(prediction, 1)
+target = torch.unsqueeze(target, 1)
+
+normal_loss = loss.NormalLoss()
+normal_loss_output = normal_loss(prediction, target)
+assert torch.abs(normal_loss_output - 0.835) < 0.001
+
+print("All losses passed")
