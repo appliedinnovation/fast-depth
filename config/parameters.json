@@ -1,5 +1,4 @@
 {
-    "ml_experiment" : "silog_loss_experiment",
     "training_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample/ConvenienceStore",
     "test_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample/ConvenienceStore",
     "train_val_split" : [99, 1],
@@ -11,7 +10,8 @@
     "batch_size" : 1,
     "num_workers" : 1,
     "device" : 0,
-    "loss" : "silog",
+    "encoder" : "mobilenet",
+    "loss" : "gfrl",
     "optimizer" : {
         "type" : "adamw",
         "lr" : 0.001,
