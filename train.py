@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 
 # FastDepth imports
 from dataloaders.nyu import NYUDataset
-import experiments
 import evaluate
 import loss
 from metrics import AverageMeter, Result
@@ -42,13 +41,13 @@ def get_params(file):
 
 
 def set_up_experiment(params, experiment, resume=None):
-    print("Experiment: ", params["ml_experiment"])
 
     # Log hyper params to Comet
     hyper_params = {
         "learning_rate": params["optimizer"]["lr"],
         "weight_decay": params["optimizer"]["weight_decay"],
         "optimizer": params["optimizer"]["type"],
+        "encoder" : params["encoder"],
         "loss": params["loss"],
         "num_epochs": params["num_epochs"],
         "batch_size": params["batch_size"],
@@ -133,7 +132,6 @@ def set_up_experiment(params, experiment, resume=None):
 
 
 def load_dataset(params):
-    # Create dataset
     print("Loading the dataset...")
 
     if params['nyu_dataset']:
@@ -189,9 +187,6 @@ def load_dataset(params):
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
 
-    # Critical section; the real experiment that is being run
-    ml_experiment = experiments.get_ml_experiment(params["ml_experiment"])
-
     mean_val_loss = -1
     try:
         train_step = int(np.ceil(
@@ -221,11 +216,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Predict
                     prediction = model(inputs)
 
-                    ### CRITICAL SECTION ###
-
-                    prediction, target, loss = ml_experiment.forward(prediction, target, criterion, params)
-
-                    ### END CRITICAL SECTION ###
+                    loss = criterion(prediction, target)
 
                     # Compute loss
                     loss.backward()
@@ -275,11 +266,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Predict
                         prediction = model(inputs)
 
-                        ### CRITICAL SECTION ###
-
-                        prediction, target, loss = ml_experiment.forward(prediction, target, criterion, params)
-
-                        ### END CRITICAL SECTION ###
+                        loss = criterion(prediction, target)
 
                         # Calculate metrics
                         result = Result()
