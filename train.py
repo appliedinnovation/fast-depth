@@ -126,10 +126,8 @@ def set_up_experiment(params, experiment, resume=None):
     if isinstance(params["device"], int) and torch.cuda.is_available():
         params["device"] = torch.device("cuda:{}".format(params["device"]))
     elif isinstance(params["device"], list) and torch.cuda.is_available():
-        device_str = [str(el) for el in params["device"]]
-        os.environ["CUDA_VISIBLE_DEVICES"] = ", ".join(device_str)
+        model = nn.DataParallel(model, device_ids=params["device"])
         params["device"] = torch.device("cuda:{}".format(params["device"][0]))
-        model = nn.DataParallel(model)
     else:
         params["device"] = "cpu"
 
