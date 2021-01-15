@@ -9,9 +9,13 @@
     "random_crop" : false,
     "batch_size" : 1,
     "num_workers" : 1,
-    "device" : [0, 1, 2, 3],
+    "device" : [0],
     "encoder" : "mobilenet",
-    "loss" : "normal", 
+    "loss" : {
+        "phase_1" : ["berhu"],
+        "phase_2" : ["normal"],
+        "phase_3" : ["sigradient", "gfrl"]
+    },
     "optimizer" : {
         "type" : "adamw",
         "lr" : 0.001,

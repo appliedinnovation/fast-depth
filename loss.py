@@ -18,6 +18,44 @@ def get_loss(loss_str):
 
     return loss_dict[loss_str]
 
+class Loss(nn.Module):
+    def __init__(self, loss_dict):
+        super(Loss, self).__init__()
+        self.name = 'Loss'
+
+        for key, value in loss_dict.items():
+            if isinstance(value, str):
+                loss_dict[key] = [value]
+
+        self.loss = {}
+        try:
+            self.loss["phase_1"] = [get_loss(fn) for fn in loss_dict["phase_1"]]    
+            self.loss["phase_2"] = [get_loss(fn) for fn in loss_dict["phase_2"]]
+            self.loss["phase_3"] = [get_loss(fn) for fn in loss_dict["phase_3"]]
+        except KeyError:
+            pass
+
+        if not self.loss:
+            raise ValueError("No loss function specified")
+
+
+    # TODO: Add constants before each loss function
+    # TODO: Add phase input to train.py
+    def forward(self, input, target, mask=None, phase="phase_1"):
+
+        # Phase 1
+        loss = sum([criterion(input, target, mask) for criterion in self.loss["phase_1"]])
+
+        # Phase 2
+        if "phase_2" in self.loss:
+            loss += sum([criterion(input, target, mask) for criterion in self.loss["phase_2"]])
+        
+        # Phase 3
+        if "phase_3" in self.loss:
+            loss += sum([criterion(input, target, mask) for criterion in self.loss["phase_3"]])
+
+        return loss
+
 
 class SILogLoss(nn.Module):
     def __init__(self):

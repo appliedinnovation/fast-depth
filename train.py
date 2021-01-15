@@ -109,6 +109,7 @@ def log_comet_parameters(experiment, params):
     except KeyError:
         pass
 
+
 def set_up_experiment(params, experiment, resume=None):
     
     # Create experiment directory
@@ -137,7 +138,8 @@ def set_up_experiment(params, experiment, resume=None):
     model.to(params["device"])
 
     ## --------------- Loss --------------- ##
-    criterion = loss.get_loss(params["loss"])
+    # criterion = loss.get_loss(params["loss"])
+    criterion = loss.Loss(params["loss"])
     
     ## --------------- Optimizer --------------- ##
     optimizer = optimize.get_optimizer(model, params)
