@@ -9,9 +9,9 @@
     "random_crop" : false,
     "batch_size" : 1,
     "num_workers" : 1,
-    "device" : 0,
+    "device" : [0, 1, 2, 3],
     "encoder" : "mobilenet",
-    "loss" : "gfrl",
+    "loss" : "normal", 
     "optimizer" : {
         "type" : "adamw",
         "lr" : 0.001,
@@ -20,9 +20,11 @@
     "num_epochs" : 5,
     "stats_frequency" : 1,
     "save_frequency" : 10,
-    "save_dir" : "results/",
+    "experiment_dir" : "results/",
     "max_checkpoints" : 80,
     "lr_epoch_step_size" : 20,
     "save_test_images" : false,
-    "save_test_metrics" : false
+    "save_test_metrics" : false,
+    "comet_name" : "Test Name",
+    "comet_tags" : ["tag1", "tag2"]
 }

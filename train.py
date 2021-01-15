@@ -40,9 +40,43 @@ def get_params(file):
     return params
 
 
-def set_up_experiment(params, experiment, resume=None):
+def param_str(title, param):
+    return title + ": " + str(param) + "\n"
 
-    # Log hyper params to Comet
+
+def print_params(params):
+    st = "------------ PARAMETERS -----------------\n"
+    st += param_str("Training Dataset", params["training_dataset_paths"])
+    st += param_str("Test Dataset", params["test_dataset_paths"])
+    st += param_str("Training/Validation Split", params["train_val_split"])
+    st += param_str("Minimum Depth", params["depth_min"])
+    st += param_str("Maximum Depth", params["depth_max"])
+    st += param_str("Predict Disparity", params["predict_disparity"])
+    st += param_str("Disparity Constant", params["disparity_constant"])
+    st += param_str("Random Crop", params["random_crop"])
+    st += param_str("Batch Size", params["batch_size"])
+    st += param_str("Num Workers", params["num_workers"])
+    st += param_str("GPUs", params["gpus"])
+    st += param_str("Encoder", params["encoder"])
+    st += param_str("Loss", params["loss"])
+    st += param_str("Optimizer", params["optimizer"]["type"])
+    st += param_str("Learning Rate: ", params["optimizer"]["lr"])
+    st += param_str("Weight Decay: ", params["optimizer"]["weight_decay"])
+    st += param_str("Num Epochs", params["num_epochs"])
+    st += param_str("Stats Frequency", params["stats_frequency"])
+    st += param_str("Save Frequency", params["save_frequency"])
+    st += param_str("Save Directory", params["experiment_dir"])
+    st += param_str("Max Checkpoints", params["max_checkpoints"])
+    st += param_str("LR Epoch Step Size", params["lr_epoch_step_size"])
+    st += param_str("Save Test Images", params["save_test_images"])
+    st += param_str("Save Test Metrics", params["save_test_metrics"])
+    st += "-----------------------------------------\n"
+    print(st)
+
+
+def log_comet_parameters(experiment, params):
+
+    # Hyperparameters
     hyper_params = {
         "learning_rate": params["optimizer"]["lr"],
         "weight_decay": params["optimizer"]["weight_decay"],
@@ -59,74 +93,76 @@ def set_up_experiment(params, experiment, resume=None):
         "lr_epoch_step_size": params["lr_epoch_step_size"]
     }
     experiment.log_parameters(hyper_params)
-    experiment.add_tag(params["loss"])
 
-    # Create experiment directory
-    if resume:
-        experiment_dir = os.path.split(resume)[0]  # Use existing folder
-    else:
-        experiment_dir = utils.make_dir_with_date(
-            params["save_dir"], "fastdepth")  # New folder
-    print("Saving results to ", experiment_dir)
-    params["experiment_dir"] = experiment_dir
-    experiment.log_other("saved_model_directory", experiment_dir)
+    # Model directory
+    experiment.log_other("saved_model_directory", params["experiment_dir"])
 
-    # Log dataset info to Comet
+    # Dataset info
     training_folders = ", ".join(params["training_dataset_paths"])
     test_folders = ", ".join(params["test_dataset_paths"])
     experiment.log_dataset_info(path=training_folders)
     experiment.log_other("test_dataset_info", test_folders)
 
-    ## Dataset ##
-    train_loader, val_loader, test_loader = load_dataset(params)
-
-    # Configure GPU
-    params["device"] = torch.device("cuda:{}".format(params["device"]) if type(
-        params["device"]) is int and torch.cuda.is_available() else "cpu")
-
-    ## Model ##
-    model, optimizer_state_dict = utils.load_model(params, resume)
-
-    # Use parallel GPUs if available
-    # Specify which GPUs to use on DGX
     try:
-        if not os.environ["CUDA_VISIBLE_DEVICES"]:
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
-        num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
-        if os.environ["USE_MULTIPLE_GPUS"] == "TRUE" and torch.cuda.device_count() > 1:
-            print("Let's use", num_gpus, "GPUs!")
-            model = nn.DataParallel(model)
+        [experiment.add_tag(tag) for tag in params["comet_tags"]]
+        experiment.set_name(params["comet_name"])
     except KeyError:
         pass
 
+def set_up_experiment(params, experiment, resume=None):
+    
+    # Create experiment directory
+    if resume:
+        params["experiment_dir"] = os.path.split(resume)[0]  # Use existing folder
+    else:
+        params["experiment_dir"] = utils.make_dir_with_date(
+            params["experiment_dir"], "fastdepth")  # New folder
+
+    ## --------------- Model --------------- ##
+    model, optimizer_state_dict = utils.load_model(params, resume)
+
+    # Configure GPU
+    params["gpus"] = params["device"]
+    if isinstance(params["device"], int) and torch.cuda.is_available():
+        params["device"] = torch.device("cuda:{}".format(params["device"]))
+    elif isinstance(params["device"], list) and torch.cuda.is_available():
+        device_str = [str(el) for el in params["device"]]
+        os.environ["CUDA_VISIBLE_DEVICES"] = ", ".join(device_str)
+        params["device"] = torch.device("cuda:{}".format(params["device"][0]))
+        model = nn.DataParallel(model)
+    else:
+        params["device"] = "cpu"
+
     # Send model to GPU(s)
-    # This must be done before optimizer is created if a model state_dict is being loaded
+    # This must be done before optimizer is created 
+    # if a model state_dict is being loaded
     model.to(params["device"])
 
-    print("Encoder: ", params["encoder"])
-
-    ## Loss ##
+    ## --------------- Loss --------------- ##
     criterion = loss.get_loss(params["loss"])
-    print("Loss: ", params["loss"])
-
-    ## Optimizer ##
+    
+    ## --------------- Optimizer --------------- ##
     optimizer = optimize.get_optimizer(model, params)
-    print("Optimizer: " , params["optimizer"]["type"])
 
-    experiment.add_tag(params["optimizer"]["type"])
     if optimizer_state_dict:
         optimizer.load_state_dict(optimizer_state_dict)
 
     # Load optimizer tensors onto GPU if necessary
     utils.optimizer_to_gpu(optimizer)
 
-    ##  LR Scheduler ##
+    ## --------------- LR Scheduler --------------- ##
     if resume:
         scheduler = optim.lr_scheduler.StepLR(
             optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
     else:
         scheduler = optim.lr_scheduler.StepLR(
             optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
+
+    print_params(params)
+    log_comet_parameters(experiment, params)
+
+    ## --------------- Dataset --------------- ##
+    train_loader, val_loader, test_loader = load_dataset(params)    
 
     return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
@@ -159,7 +195,6 @@ def load_dataset(params):
         params["train_val_split"], len(dataset))
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, train_val_split_lengths)
-    print("Train/val split: ", train_val_split_lengths)
     params["num_training_examples"] = len(train_dataset)
     params["num_validation_examples"] = len(val_dataset)
 
@@ -187,7 +222,6 @@ def load_dataset(params):
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
 
-    mean_val_loss = -1
     try:
         train_step = int(np.ceil(
             params["num_training_examples"] / params["batch_size"]) * params["start_epoch"])
@@ -213,7 +247,6 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Zero the parameter gradients
                     optimizer.zero_grad()
 
-                    # Predict
                     prediction = model(inputs)
 
                     loss = criterion(prediction, target)
@@ -255,57 +288,53 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
             # Validation each epoch
             epoch_loss = 0.0
             average = AverageMeter()
-            with experiment.validate():
-                with torch.no_grad():
-                    img_idxs = np.random.randint(0, len(val_loader), size=5)
-                    model.eval()
-                    for i, (inputs, target) in enumerate(val_loader):
-                        inputs, target = inputs.to(
-                            params["device"]), target.to(params["device"])
+            with experiment.validate() and torch.no_grad():
+                img_idxs = np.random.randint(0, len(val_loader), size=5)
+                model.eval()
+                for i, (inputs, target) in enumerate(val_loader):
+                    inputs, target = inputs.to(
+                        params["device"]), target.to(params["device"])
 
-                        # Predict
-                        prediction = model(inputs)
+                    prediction = model(inputs)
 
-                        loss = criterion(prediction, target)
+                    loss = criterion(prediction, target)
 
-                        # Calculate metrics
-                        result = Result()
-                        result.evaluate(prediction.data, target.data)
-                        average.update(result, 0, 0, inputs.size(0))
-                        epoch_loss += loss.item()
+                    # Calculate metrics
+                    result = Result()
+                    result.evaluate(prediction.data, target.data)
+                    average.update(result, 0, 0, inputs.size(0))
+                    epoch_loss += loss.item()
 
-                        # Log to Comet
-                        utils.log_comet_metrics(
-                            experiment, result, loss.item(), step=val_step, epoch=current_epoch)
-                        val_step += 1
+                    # Log to Comet
+                    utils.log_comet_metrics(
+                        experiment, result, loss.item(), step=val_step, epoch=current_epoch)
+                    val_step += 1
 
-                        # Log images to Comet
-                        if i in img_idxs:
-                            utils.log_image_to_comet(
-                                inputs[0], target[0], prediction[0], current_epoch, i, experiment, result, "val", val_step)
-                            utils.log_raw_image_to_comet(
-                            inputs[0], target[0], prediction[0], current_epoch, i, experiment, "val", train_step)
+                    # Log images to Comet
+                    if i in img_idxs:
+                        utils.log_image_to_comet(
+                            inputs[0], target[0], prediction[0], current_epoch, i, experiment, result, "val", val_step)
+                        utils.log_raw_image_to_comet(
+                        inputs[0], target[0], prediction[0], current_epoch, i, experiment, "val", train_step)
 
-                    # Log epoch metrics to Comet
-                    mean_val_loss = epoch_loss / len(val_loader)
-                    utils.log_comet_metrics(experiment, average.average(), mean_val_loss,
-                                            prefix="epoch", step=val_step, epoch=current_epoch)
-                    print("Validation Loss [%d]: %.3f" %
-                          (current_epoch, mean_val_loss))
+                # Log epoch metrics to Comet
+                mean_val_loss = epoch_loss / len(val_loader)
+                utils.log_comet_metrics(experiment, average.average(), mean_val_loss,
+                                        prefix="epoch", step=val_step, epoch=current_epoch)
+                print("Validation Loss [%d]: %.3f" %
+                        (current_epoch, mean_val_loss))
 
-            # Save periodically
-            if (current_epoch + 1) % params["save_frequency"] == 0:
-                save_path = utils.get_save_path(
-                    current_epoch, params["experiment_dir"])
-                utils.save_model(model, optimizer, save_path, current_epoch,
-                                 mean_val_loss, params["max_checkpoints"])
-                experiment.log_model(save_path.split("/")[-1], save_path)
-                print("Saving new checkpoint")
+        # Save periodically
+        if (current_epoch + 1) % params["save_frequency"] == 0:
+            save_path = utils.get_save_path(
+                current_epoch, params["experiment_dir"])
+            utils.save_model(model, optimizer, save_path, current_epoch,
+                                mean_val_loss, params["max_checkpoints"])
+            experiment.log_model(save_path.split("/")[-1], save_path)
+            print("Saving new checkpoint")
 
-            experiment.log_epoch_end(current_epoch)
-            scheduler.step()
-
-        print("Finished training")
+        experiment.log_epoch_end(current_epoch)
+        scheduler.step()
 
         # Save the final model
         save_path = utils.get_save_path(
@@ -324,11 +353,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
         experiment.log_model(save_path.split("/")[-1], save_path)
         print("Model saved to ", os.path.abspath(save_path))
 
-
-def main(args):
-    os.environ["USE_MULTIPLE_GPUS"] = "TRUE"
-
-    # Create Comet ML Experiment
+def create_comet_experiment(args):
     if args.resume:
         experiment_key = input("Enter Comet ML key of experiment to resume:")
         experiment = ExistingExperiment(
@@ -339,11 +364,11 @@ def main(args):
     else:
         experiment = Experiment(
             api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
+    return experiment
 
-    if args.tag:
-        experiment.add_tag(args.tag)
-    if args.name:
-        experiment.set_name(args.name)
+
+def main(args):
+    experiment = create_comet_experiment(args)
 
     config_file = args.config
     params = get_params(config_file)
@@ -366,10 +391,6 @@ if __name__ == "__main__":
                         help="Filename of parameters configuration JSON.")
     parser.add_argument('--resume', type=str, default=None,
                         help="Path to model checkpoint to resume training.")
-    parser.add_argument('-t', '--tag', type=str, default=None,
-                        help='Extra tag to add to Comet experiment')
-    parser.add_argument('-n', '--name', type=str, default=None,
-                        help='Comet ML Experiment name')
     parser.add_argument('--nyu', type=int, default=0,
                         help='whether to use NYU Depth V2 dataset.')
     parser.add_argument('--no-comet', action='store_true')
