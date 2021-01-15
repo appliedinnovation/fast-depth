@@ -12,7 +12,8 @@ def get_loss(loss_str):
         "silog": SILogLoss(),
         "berhu": BerhuLoss(),
         "sigradient": SIGradientLoss(),
-        "normal" : NormalLoss()
+        "normal" : NormalLoss(),
+        "gfrl" : GlobalFocalRelativeLoss()
     }
 
     return loss_dict[loss_str]
@@ -157,18 +158,80 @@ class NormalLoss(nn.Module):
         losses = 1 - numerator / denominator
         return torch.mean(losses) 
 
+
 class GlobalFocalRelativeLoss(nn.Module):
     def __init__(self):
         super(GlobalFocalRelativeLoss, self).__init__()
         self.name = "GFRL"
-    
+
+    def _create_pixel_pairs(self, input):
+        batch_size = input.shape[0]
+
+        # Divide image into nxn blocks
+        n = 16
+        unfold = torch.nn.Unfold(kernel_size=(n, n), stride=n)
+        input_blocks = unfold(input) # [B, 256, 196]
+        num_patches = input_blocks.shape[-1]
+
+        flattened_blocks = input_blocks.view(-1)
+        total_patches = batch_size * input_blocks.shape[-1]
+
+        # Randomly sample 1 pixel from each block
+        random_pixel_idxs = torch.Tensor([256 * i + torch.randint(0, 256, size=(1,)) for i in range(total_patches)])
+        pixel_samples = flattened_blocks[random_pixel_idxs.type(torch.long)]
+        pixel_samples_batched = pixel_samples.view(batch_size, num_patches)
+
+        # Create combinations of each pixel pair index
+        pixel_pairs = torch.stack(([torch.combinations(pixel_samples_batched[i]) for i in range(batch_size)]))
+        pixel_pairs = pixel_pairs.view(-1, 2)
+
+        return pixel_pairs[..., 0], pixel_pairs[..., 1]
+
+    def _masked_split(self, input, mask):
+        mask_selection = torch.masked_select(input, mask)
+        mask_selection_opposite = torch.masked_select(input, torch.logical_not(mask))
+        return mask_selection, mask_selection_opposite
+
     def forward(self, input, target, mask=None):
-        assert input.shape = target.shape
+        assert input.shape == target.shape
 
         if mask is not None:
             input = input[mask]
             target = target[mask]
 
-        # Divide image into nxn blocks
-        n = 16
-        
+        # Create pairs of random pixels for comparing ordinal relations
+        d1_input, d2_input = self._create_pixel_pairs(input)
+        d1_target, d2_target = self._create_pixel_pairs(target)
+
+        # Depth equality mask
+        # Depth values are equal if depth difference ratio is less than 0.02
+        equal_mask = torch.abs(torch.sub(d1_target, d2_target)) < 0.02
+
+        # Split up into equal and nonequal pixel pairs
+        d1_input_equal, d1_input_nonequal = self._masked_split(d1_input, equal_mask)
+        d2_input_equal, d2_input_nonequal = self._masked_split(d2_input, equal_mask)
+        d1_target_equal, d1_target_nonequal = self._masked_split(d1_target, equal_mask)
+        d2_target_equal, d2_target_nonequal = self._masked_split(d2_target, equal_mask)
+
+        # Create ordinal masks with target ordinal relations
+        lesser_mask = torch.lt(d1_target_nonequal, d2_target_nonequal)
+        greater_mask = torch.gt(d1_target_nonequal, d2_target_nonequal)
+
+        # rk = -1 if d1 < d2, rk = 1 if d1 > d2
+        ordinal_mask = lesser_mask.type(torch.int8) * -1 + greater_mask.type(torch.int8) * 1
+
+        # Calculate Wk modulating factor
+        ord_factor = 1 + torch.exp(torch.mul(-ordinal_mask, d1_input_nonequal - d2_input_nonequal))
+        wk = 1 - 1 / ord_factor
+
+        # Ordinal loss, rk != 0
+        gam = 2 # Modulating exponent
+        ordinal_loss = torch.mul(torch.pow(wk, gam), torch.log(ord_factor))
+
+        # MSE Loss, rk == 0
+        mse_loss = torch.square(d1_input_equal - d2_input_equal)
+
+        # Sum the average losses
+        loss = torch.mean(ordinal_loss) + torch.mean(mse_loss)
+
+        return loss

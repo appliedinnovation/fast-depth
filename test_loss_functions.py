@@ -51,4 +51,12 @@ normal_loss = loss.NormalLoss()
 normal_loss_output = normal_loss(prediction, target)
 assert torch.abs(normal_loss_output - 0.835) < 0.001
 
+# Global Focal Relative Loss
+prediction = torch.rand(size=(4, 1, 224, 224))
+target = torch.rand(size=(4, 1, 224, 224))
+
+gfrl_loss = loss.GlobalFocalRelativeLoss()
+gfrl_loss_output = gfrl_loss(prediction, target)
+print(gfrl_loss_output)
+
 print("All losses passed")
