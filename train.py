@@ -138,7 +138,6 @@ def set_up_experiment(params, experiment, resume=None):
     model.to(params["device"])
 
     ## --------------- Loss --------------- ##
-    # criterion = loss.get_loss(params["loss"])
     criterion = loss.Loss(params["loss"])
     
     ## --------------- Optimizer --------------- ##
@@ -221,7 +220,7 @@ def load_dataset(params):
 
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
-
+    phase_list = ["phase_1"]
     try:
         train_step = int(np.ceil(
             params["num_training_examples"] / params["batch_size"]) * params["start_epoch"])
@@ -249,7 +248,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
                     prediction = model(inputs)
 
-                    loss = criterion(prediction, target)
+                    loss = criterion(prediction, target, phase_list=phase_list)
 
                     # Compute loss
                     loss.backward()
@@ -297,7 +296,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
                     prediction = model(inputs)
 
-                    loss = criterion(prediction, target)
+                    loss = criterion(prediction, target, phase_list=phase_list)
 
                     # Calculate metrics
                     result = Result()
@@ -323,6 +322,12 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                                         prefix="epoch", step=val_step, epoch=current_epoch)
                 print("Validation Loss [%d]: %.3f" %
                         (current_epoch, mean_val_loss))
+                
+            # Update training phase
+            if current_epoch + 1 == params["loss"]["phase_2"]["start"]:
+                phase_list.append("phase_2")
+            if current_epoch + 1 == params["loss"]["phase_3"]["start"]:
+                phase_list.append("phase_3")
 
         # Save periodically
         if (current_epoch + 1) % params["save_frequency"] == 0:

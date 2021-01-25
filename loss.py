@@ -12,47 +12,61 @@ def get_loss(loss_str):
         "silog": SILogLoss(),
         "berhu": BerhuLoss(),
         "sigradient": SIGradientLoss(),
-        "normal" : NormalLoss(),
-        "gfrl" : GlobalFocalRelativeLoss()
+        "normal": NormalLoss(),
+        "gfrl": GlobalFocalRelativeLoss()
     }
 
     return loss_dict[loss_str]
+
 
 class Loss(nn.Module):
     def __init__(self, loss_dict):
         super(Loss, self).__init__()
         self.name = 'Loss'
 
-        for key, value in loss_dict.items():
-            if isinstance(value, str):
-                loss_dict[key] = [value]
-
         self.loss = {}
         try:
-            self.loss["phase_1"] = [get_loss(fn) for fn in loss_dict["phase_1"]]    
-            self.loss["phase_2"] = [get_loss(fn) for fn in loss_dict["phase_2"]]
-            self.loss["phase_3"] = [get_loss(fn) for fn in loss_dict["phase_3"]]
+            self.loss["phase_1"] = [get_loss(fn)
+                                    for fn in loss_dict["phase_1"]["losses"]]
+            self.loss["phase_2"] = [get_loss(fn)
+                                    for fn in loss_dict["phase_2"]["losses"]]
+            self.loss["phase_3"] = [get_loss(fn)
+                                    for fn in loss_dict["phase_3"]["losses"]]
         except KeyError:
             pass
 
-        if not self.loss:
-            raise ValueError("No loss function specified")
+        if not self.loss and not self.loss["phase_1"]:
+            raise ValueError(
+                "No loss function specified. There must be at least one"
+                "loss function specified in phase_1.")
 
+        self.constants = {
+            "k1": 1.0,
+            "k2": 1.0,
+            "k3": 1.0
+        }
+        try:
+            self.constants["k1"] = loss_dict["phase_1"]["k"]
+            self.constants["k2"] = loss_dict["phase_2"]["k"]
+            self.constants["k3"] = loss_dict["phase_3"]["k"]
+        except KeyError:
+            pass
 
-    # TODO: Add constants before each loss function
-    # TODO: Add phase input to train.py
-    def forward(self, input, target, mask=None, phase="phase_1"):
+    def forward(self, input, target, mask=None, phase_list=["phase_1"]):
 
         # Phase 1
-        loss = sum([criterion(input, target, mask) for criterion in self.loss["phase_1"]])
+        loss = sum([criterion(input, target, mask)
+                    for criterion in self.loss["phase_1"]]) * self.constants["k1"]
 
         # Phase 2
-        if "phase_2" in self.loss:
-            loss += sum([criterion(input, target, mask) for criterion in self.loss["phase_2"]])
-        
+        if "phase_2" in phase_list and "phase_2" in self.loss:
+            loss += sum([criterion(input, target, mask)
+                         for criterion in self.loss["phase_2"]]) * self.constants["k2"]
+
         # Phase 3
-        if "phase_3" in self.loss:
-            loss += sum([criterion(input, target, mask) for criterion in self.loss["phase_3"]])
+        if "phase_3" in phase_list and "phase_3" in self.loss:
+            loss += sum([criterion(input, target, mask)
+                         for criterion in self.loss["phase_3"]]) * self.constants["k3"]
 
         return loss
 
@@ -103,7 +117,7 @@ class BerhuLoss(nn.Module):
         diff_copy = diff.clone()
         diff_copy[diff_copy > c] = 0
         diff_copy += diff_square
-        
+
         loss = torch.mean(diff_copy)
         return loss
 
@@ -139,8 +153,8 @@ class SIGradientLoss(nn.Module):
         self._set_end_zero(gx, shift, -2)
         self._set_end_zero(gy, shift, -1)
         return gx, gy
-    
-    def  forward(self, input, target, mask=None):
+
+    def forward(self, input, target, mask=None):
         assert input.shape == target.shape
 
         if mask is not None:
@@ -182,8 +196,10 @@ class NormalLoss(nn.Module):
         grad_target = KF.spatial_gradient(target, mode='sobel')
 
         # Create homogeneous column vectors
-        n_input = torch.cat((-grad_input.view(-1), torch.ones([1,], dtype=torch.float32, device=grad_input.device)))
-        n_target = torch.cat((-grad_target.view(-1), torch.ones([1,], dtype=torch.float32, device=grad_target.device)))
+        n_input = torch.cat(
+            (-grad_input.view(-1), torch.ones([1, ], dtype=torch.float32, device=grad_input.device)))
+        n_target = torch.cat(
+            (-grad_target.view(-1), torch.ones([1, ], dtype=torch.float32, device=grad_target.device)))
 
         # Inner product of prediction and target
         numerator = torch.dot(n_input, n_target)
@@ -194,7 +210,7 @@ class NormalLoss(nn.Module):
         denominator = torch.mul(d1, d2)
 
         losses = 1 - numerator / denominator
-        return torch.mean(losses) 
+        return torch.mean(losses)
 
 
 class GlobalFocalRelativeLoss(nn.Module):
@@ -208,26 +224,29 @@ class GlobalFocalRelativeLoss(nn.Module):
         # Divide image into nxn blocks
         n = 16
         unfold = torch.nn.Unfold(kernel_size=(n, n), stride=n)
-        input_blocks = unfold(input) # [B, 256, 196]
+        input_blocks = unfold(input)  # [B, 256, 196]
         num_patches = input_blocks.shape[-1]
 
         flattened_blocks = input_blocks.view(-1)
         total_patches = batch_size * input_blocks.shape[-1]
 
         # Randomly sample 1 pixel from each block
-        random_pixel_idxs = torch.Tensor([256 * i + torch.randint(0, 256, size=(1,)) for i in range(total_patches)])
+        random_pixel_idxs = torch.Tensor(
+            [256 * i + torch.randint(0, 256, size=(1,)) for i in range(total_patches)])
         pixel_samples = flattened_blocks[random_pixel_idxs.type(torch.long)]
         pixel_samples_batched = pixel_samples.view(batch_size, num_patches)
 
         # Create combinations of each pixel pair index
-        pixel_pairs = torch.stack(([torch.combinations(pixel_samples_batched[i]) for i in range(batch_size)]))
+        pixel_pairs = torch.stack(
+            ([torch.combinations(pixel_samples_batched[i]) for i in range(batch_size)]))
         pixel_pairs = pixel_pairs.view(-1, 2)
 
         return pixel_pairs[..., 0], pixel_pairs[..., 1]
 
     def _masked_split(self, input, mask):
         mask_selection = torch.masked_select(input, mask)
-        mask_selection_opposite = torch.masked_select(input, torch.logical_not(mask))
+        mask_selection_opposite = torch.masked_select(
+            input, torch.logical_not(mask))
         return mask_selection, mask_selection_opposite
 
     def forward(self, input, target, mask=None):
@@ -246,24 +265,31 @@ class GlobalFocalRelativeLoss(nn.Module):
         equal_mask = torch.abs(torch.sub(d1_target, d2_target)) < 0.02
 
         # Split up into equal and nonequal pixel pairs
-        d1_input_equal, d1_input_nonequal = self._masked_split(d1_input, equal_mask)
-        d2_input_equal, d2_input_nonequal = self._masked_split(d2_input, equal_mask)
-        d1_target_equal, d1_target_nonequal = self._masked_split(d1_target, equal_mask)
-        d2_target_equal, d2_target_nonequal = self._masked_split(d2_target, equal_mask)
+        d1_input_equal, d1_input_nonequal = self._masked_split(
+            d1_input, equal_mask)
+        d2_input_equal, d2_input_nonequal = self._masked_split(
+            d2_input, equal_mask)
+        d1_target_equal, d1_target_nonequal = self._masked_split(
+            d1_target, equal_mask)
+        d2_target_equal, d2_target_nonequal = self._masked_split(
+            d2_target, equal_mask)
 
         # Create ordinal masks with target ordinal relations
         lesser_mask = torch.lt(d1_target_nonequal, d2_target_nonequal)
         greater_mask = torch.gt(d1_target_nonequal, d2_target_nonequal)
 
         # rk = -1 if d1 < d2, rk = 1 if d1 > d2
-        ordinal_mask = lesser_mask.type(torch.int8) * -1 + greater_mask.type(torch.int8) * 1
+        ordinal_mask = lesser_mask.type(
+            torch.int8) * -1 + greater_mask.type(torch.int8) * 1
 
         # Calculate Wk modulating factor
-        ord_factor = 1 + torch.exp(torch.mul(-ordinal_mask, d1_input_nonequal - d2_input_nonequal))
+        ord_factor = 1 + \
+            torch.exp(torch.mul(-ordinal_mask,
+                                d1_input_nonequal - d2_input_nonequal))
         wk = 1 - 1 / ord_factor
 
         # Ordinal loss, rk != 0
-        gam = 2 # Modulating exponent
+        gam = 2  # Modulating exponent
         ordinal_loss = torch.mul(torch.pow(wk, gam), torch.log(ord_factor))
 
         # MSE Loss, rk == 0
