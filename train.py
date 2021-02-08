@@ -324,10 +324,13 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         (current_epoch, mean_val_loss))
                 
             # Update training phase
-            if current_epoch + 1 == params["loss"]["phase_2"]["start"]:
-                phase_list.append("phase_2")
-            if current_epoch + 1 == params["loss"]["phase_3"]["start"]:
-                phase_list.append("phase_3")
+            try:
+                if current_epoch + 1 == params["loss"]["phase_2"]["start"]:
+                    phase_list.append("phase_2")
+                if current_epoch + 1 == params["loss"]["phase_3"]["start"]:
+                    phase_list.append("phase_3")
+            except KeyError:
+                pass
 
         # Save periodically
         if (current_epoch + 1) % params["save_frequency"] == 0:
