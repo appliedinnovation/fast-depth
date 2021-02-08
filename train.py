@@ -332,17 +332,17 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
             except KeyError:
                 pass
 
-        # Save periodically
-        if (current_epoch + 1) % params["save_frequency"] == 0:
-            save_path = utils.get_save_path(
-                current_epoch, params["experiment_dir"])
-            utils.save_model(model, optimizer, save_path, current_epoch,
-                                mean_val_loss, params["max_checkpoints"])
-            experiment.log_model(save_path.split("/")[-1], save_path)
-            print("Saving new checkpoint")
+            # Save periodically
+            if (current_epoch + 1) % params["save_frequency"] == 0:
+                save_path = utils.get_save_path(
+                    current_epoch, params["experiment_dir"])
+                utils.save_model(model, optimizer, save_path, current_epoch,
+                                    mean_val_loss, params["max_checkpoints"])
+                experiment.log_model(save_path.split("/")[-1], save_path)
+                print("Saving new checkpoint")
 
-        experiment.log_epoch_end(current_epoch)
-        scheduler.step()
+            experiment.log_epoch_end(current_epoch)
+            scheduler.step()
 
         # Save the final model
         save_path = utils.get_save_path(
