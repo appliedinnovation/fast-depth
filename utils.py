@@ -317,8 +317,14 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
     metrics = {
         "loss": loss,
         "rmse": result.rmse,
+        "irmse" : result.irmse,
         "mae": result.mae,
-        "delta1": result.delta1
+        "imae" : result.imae,
+        "delta1": result.delta1,
+        "delta2" : result.delta2,
+        "delta3" : result.delta3,
+        "absrel" : result.absrel,
+        "lg10" : result.lg10
     }
     experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 

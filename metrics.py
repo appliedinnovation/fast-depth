@@ -29,18 +29,15 @@ class Result(object):
         self.data_time, self.gpu_time = data_time, gpu_time
 
     def evaluate(self, output, target):
-        valid_mask = ((target>0) + (output>0)) > 0
-
-        # output = 1e3 * output[valid_mask]
-        # target = 1e3 * target[valid_mask]
         abs_diff = (output - target).abs()
 
+        # MSE, RMSE, MAE, REL
         self.mse = float((torch.pow(abs_diff, 2)).mean())
         self.rmse = math.sqrt(self.mse)
         self.mae = float(abs_diff.mean())
-        self.lg10 = float((log10(output) - log10(target)).abs().mean())
         self.absrel = float((abs_diff / target).mean())
 
+        # D1, D2, D3
         maxRatio = torch.max(output / target, target / output)
         self.delta1 = float((maxRatio < 1.25).float().mean())
         self.delta2 = float((maxRatio < 1.25 ** 2).float().mean())
@@ -48,11 +45,22 @@ class Result(object):
         self.data_time = 0
         self.gpu_time = 0
 
+        # Log10
+        eps = 1e-4
+        output[output == 0] = eps
+        target[target == 0] = eps
+        self.lg10 = float((log10(output) - log10(target)).abs().mean())
+
+        # iRMSE, iMAE
+        clip = 100
         inv_output = 1 / output
         inv_target = 1 / target
+        inv_output[inv_output > clip] = clip
+        inv_target[inv_target > clip] = clip
         abs_inv_diff = (inv_output - inv_target).abs()
         self.irmse = math.sqrt((torch.pow(abs_inv_diff, 2)).mean())
         self.imae = float(abs_inv_diff.mean())
+        print(self.lg10, self.irmse, self.imae)
 
 
 class AverageMeter(object):
