@@ -60,7 +60,6 @@ class Result(object):
         abs_inv_diff = (inv_output - inv_target).abs()
         self.irmse = math.sqrt((torch.pow(abs_inv_diff, 2)).mean())
         self.imae = float(abs_inv_diff.mean())
-        print(self.lg10, self.irmse, self.imae)
 
 
 class AverageMeter(object):

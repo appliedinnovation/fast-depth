@@ -1,4 +1,3 @@
-import Datasets
 from comet_ml import Experiment, ExistingExperiment
 import utils
 from metrics import AverageMeter, Result
@@ -21,6 +20,7 @@ try:
 except KeyError:
     print("Datasets.py absolute path not found in PATH")
 sys.path.append(dataset_path)
+import Datasets
 
 fieldnames = ['rmse', 'mae', 'delta1', 'absrel',
               'lg10', 'mse', 'delta2', 'delta3', 'irmse', 'imae', 'data_time', 'gpu_time']
