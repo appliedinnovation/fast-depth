@@ -1,6 +1,7 @@
 import os
 import cv2
 import torch
+from torchvision import transforms
 import json
 import shutil
 import numpy as np
@@ -12,9 +13,6 @@ from collections import OrderedDict
 import models
 
 cmap = plt.cm.viridis
-
-# Here for legacy code
-
 
 def parse_command():
     data_names = ['nyudepthv2',
@@ -50,25 +48,29 @@ def colored_depthmap(depth, d_min=None, d_max=None):
     return 255 * cmap(depth_relative)[:, :, :3]  # H, W, C
 
 
-def visualize_depth(depth, _min=None, _max=None):
-    # so the image isn't all white, convert it to range [0, 1.0]
-    _mean, _std = (np.mean(depth), np.std(depth))
-
-    if _min is None:
-        _min = np.min(depth)
-    if _max is None:
-        _max = np.max(depth)
-
+# Returns normalized image between 0 and 1
+def normalize_new_range(input):
+    _mean, _std = (np.mean(input), np.std(input))
+    _min = np.min(input)
+    _max = np.max(input)
+    
     newMax = _mean + 2 * _std
     newMin = _mean - 2 * _std
     if newMax < _max:
         _max = newMax
     if newMin > _min:
         _min = newMin
+    input[input > _max] = _max
+    input[input < _min] = _min
     _range = _max-_min
-    if _range:
-        depth -= _min
-        depth /= _range
+    input -= _min
+    input /= _range
+
+    return input
+
+
+def visualize_depth(depth):
+    depth = normalize_new_range(depth)
 
     # Convert to bgr
     depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
@@ -80,7 +82,6 @@ def visualize_depth(depth, _min=None, _max=None):
 
 
 def visualize_depth_compare(depth, target):
-    _mean_target, _std_target = (np.mean(target), np.std(target))
     _min = min(np.min(target), np.min(depth))
     _max = max(np.max(target), np.max(depth))
 
@@ -103,39 +104,40 @@ def visualize_depth_compare(depth, target):
     return depth, target
 
 
-def merge_into_row(input, depth_target, depth_pred):
-    # H, W, C
-    rgb = 255 * np.transpose(np.squeeze(input.cpu().numpy()), (1, 2, 0))
-    depth_target_cpu = np.squeeze(depth_target.cpu().numpy())
-    depth_pred_cpu = np.squeeze(depth_pred.data.cpu().numpy())
+def tensor_to_rgb(input):
+    return np.transpose(np.squeeze(input.detach().cpu().numpy()), (1, 2, 0))
 
+
+def tensor_to_depth(input):
+    return np.squeeze(input.detach().cpu().numpy())
+
+
+def merge_into_row(input, depth_target, depth_pred, error_map=None):
     depth_pred_col, depth_target_col = visualize_depth_compare(
-        depth_pred_cpu, depth_target_cpu)
+        depth_pred, depth_target)
 
-    img_merge = np.hstack([rgb, depth_target_col, depth_pred_col])
-
-    return img_merge
-
-
-def merge_into_row_with_gt(input, depth_input, depth_target, depth_pred):
-    # H, W, C
-    rgb = 255 * np.transpose(np.squeeze(input.cpu().numpy()), (1, 2, 0))
-    depth_input_cpu = np.squeeze(depth_input.cpu().numpy())
-    depth_target_cpu = np.squeeze(depth_target.cpu().numpy())
-    depth_pred_cpu = np.squeeze(depth_pred.data.cpu().numpy())
-
-    d_min = min(np.min(depth_input_cpu), np.min(
-        depth_target_cpu), np.min(depth_pred_cpu))
-    d_max = max(np.max(depth_input_cpu), np.max(
-        depth_target_cpu), np.max(depth_pred_cpu))
-    depth_input_col = colored_depthmap(depth_input_cpu, d_min, d_max)
-    depth_target_col = colored_depthmap(depth_target_cpu, d_min, d_max)
-    depth_pred_col = colored_depthmap(depth_pred_cpu, d_min, d_max)
-
-    img_merge = np.hstack(
-        [rgb, depth_input_col, depth_target_col, depth_pred_col])
+    if error_map is not None:
+        error_map = cv2.cvtColor(error_map, cv2.COLOR_BGR2RGB)
+        img_merge = np.hstack([input, depth_target_col, depth_pred_col, error_map])
+    else:
+        img_merge = np.hstack([input, depth_target_col, depth_pred_col])
 
     return img_merge
+
+
+# Inputs are np arrays
+# Am I clipping prediction somewhere already? If not, do so here
+def calculate_error_map(target, prediction):
+
+    # Clamp to relatively small depth values
+    target[target > 25] = 25
+    prediction[prediction > 25] = 25
+    error_map = np.abs(prediction - target)
+    error_map = normalize_new_range(error_map)
+    error_map = cv2.normalize(error_map, error_map, 0, 255.0, cv2.NORM_MINMAX, cv2.CV_8U)
+    error_map = cv2.cvtColor(error_map, cv2.COLOR_GRAY2BGR)
+    error_map = cv2.applyColorMap(error_map, cv2.COLORMAP_HOT)
+    return error_map
 
 
 def add_row(img_merge, row):
@@ -330,9 +332,25 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
 
 
 def log_image_to_comet(input, target, output, epoch, id, experiment, result, prefix, step=None):
-    img_merge = merge_into_row(input, target, output)
+    # Convert to np arrays
+    input = tensor_to_rgb(input)
+    target = tensor_to_depth(target)
+    prediction = tensor_to_depth(output)
+
+    # Log raw image
+    stacked = stack_images(input, target, prediction)
+    raw = create_raw_image(stacked)
+    log_merged_raw_image_to_comet(raw, epoch, id, experiment, prefix, step)
+
+    # Error map
+    error_map = calculate_error_map(target, prediction)
+
+    # Merge rgb, target, prediction, and error map
+    img_merge = merge_into_row(input * 255, target, prediction, error_map)
     img_merge = write_results(img_merge, result)
     log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
+
+    return img_merge
 
 
 def stack_images(input, target, output):
@@ -342,17 +360,6 @@ def stack_images(input, target, output):
 
 def create_raw_image(image):
     return image.tobytes()    
-
-
-def log_raw_image_to_comet(input, target, output, epoch, id, experiment, prefix, step=None):
-    # C, H, W -> H, W, C
-    input = np.transpose(np.squeeze(input.cpu().numpy()), (1, 2, 0))
-    target = np.squeeze(target.cpu().numpy())
-    output = np.squeeze(output.data.cpu().numpy())
-
-    stacked_images = stack_images(input, target, output)
-    raw_image = create_raw_image(stacked_images)
-    log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step)
 
 
 def log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step=None):

@@ -120,15 +120,13 @@ def evaluate(params, loader, model, experiment):
 
                 # Log images to comet
                 if i in img_idxs:
-                    img_merge = utils.merge_into_row(
-                        inputs[0], targets[0], outputs[0])
-                    img_merge = utils.write_results(img_merge, result)
-                    utils.log_merged_image_to_comet(
-                        img_merge, 0, i, experiment, "test")
+                    img_merged = utils.log_image_to_comet(
+                        inputs[0], targets[0], outputs[0], 
+                        epoch=0, id=i, experiment=experiment, result=result, prefix="test")
                     if params["save_test_images"]:
                         filename = os.path.join(params["experiment_dir"],
                                                 "comparison_epoch_{}_{}.png".format(str(params["start_epoch"]), np.where(img_idxs == i)[0][0]))
-                        utils.save_image(img_merge, filename)
+                        utils.save_image(img_merged, filename)
 
                 if (i + 1) % params["stats_frequency"] == 0 and i != 0:
                     print('Test: [{0}/{1}]\t'
