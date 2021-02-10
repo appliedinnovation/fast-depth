@@ -177,15 +177,16 @@ def load_config_file(file):
 
 def format_dataset_path(dataset_paths):
     if isinstance(dataset_paths, str):
-        data_paths = {
+        dataset_paths = {
             dataset_paths
         }
     elif isinstance(dataset_paths, list):
         data_paths = set()
         for path in dataset_paths:
             data_paths.add(path)
+        dataset_paths = data_paths
 
-    return data_paths
+    return dataset_paths
 
 
 def make_dir_with_date(root_dir, prefix):
@@ -226,6 +227,8 @@ def load_model(params, resume=None):
         model = models.ResNetSkipAdd(layers=50, output_size=(224, 224), pretrained=True)
     elif params["encoder"] == "resnet18":
         model = models.ResNetSkipAdd(layers=18, output_size=(224, 224), pretrained=True)
+    else:
+        model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
     if model_state_dict:
         model.load_state_dict(model_state_dict)
 

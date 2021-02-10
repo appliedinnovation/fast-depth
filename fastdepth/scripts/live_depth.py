@@ -35,6 +35,7 @@ model.to(device)
 cap = cv2.VideoCapture(0)
 to_tensor = transforms.ToTensor()
 
+out = []
 if args.s:
     out = cv2.VideoWriter("live_depth.avi", cv2.VideoWriter_fourcc(*'MJPG'), 25.0, (224*2, 224))
 
