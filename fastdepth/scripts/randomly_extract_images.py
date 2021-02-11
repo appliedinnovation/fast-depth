@@ -76,7 +76,7 @@ for sample in random_sample:
         ddst = os.path.join(args.s, sample[1]["depth"])
 
         # Make directory if needed
-        relative_file_path = os.path.join(*idst.split("/")[:-1])
+        relative_file_path = idst.rpartition('/')[0]
         if not os.path.exists(relative_file_path):
             os.makedirs(relative_file_path, exist_ok=True)
 
