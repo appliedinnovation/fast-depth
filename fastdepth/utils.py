@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import torch
 from torchvision import transforms
@@ -12,7 +13,12 @@ import datetime
 from collections import OrderedDict
 import models
 
+sys.path.append(os.getcwd())
+
 cmap = plt.cm.viridis
+
+def raw_to_numpy(path, height, width, channels):
+    return np.fromfile(path, np.dtype(('f4', channels)), height * width).reshape(height, width, channels)    
 
 def parse_command():
     data_names = ['nyudepthv2',
@@ -69,14 +75,18 @@ def normalize_new_range(input):
     return input
 
 
-def visualize_depth(depth):
+def visualize_depth(depth, far_clip=None):
+    if far_clip:
+        depth[depth > far_clip] = far_clip
+    
     depth = normalize_new_range(depth)
+    depth = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
     # Convert to bgr
     depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
 
     # Color mapping for better visibility / contrast
-    depth = np.array(depth * 255, dtype=np.uint8)
+    # depth = np.array(depth * 255, dtype=np.uint8)
     depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
     return depth
 

@@ -69,7 +69,7 @@ random_sample = random.sample(paired_files.items(), args.n)
 
 # Copy random sample to destination
 for sample in random_sample:
-    if sample[1]["image"] and sample[1]["depth"]:
+    if "image" in sample[1] and "depth" in sample[1]:
         isrc = os.path.join(args.d, sample[1]["image"])
         idst = os.path.join(args.s, sample[1]["image"])
         dsrc = os.path.join(args.d, sample[1]["depth"])
