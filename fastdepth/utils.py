@@ -123,14 +123,11 @@ def tensor_to_depth(input):
 
 
 def merge_into_row(input, depth_target, depth_pred, error_map=None):
-    depth_pred_col, depth_target_col = visualize_depth_compare(
-        depth_pred, depth_target)
-
     if error_map is not None:
         error_map = cv2.cvtColor(error_map, cv2.COLOR_BGR2RGB)
-        img_merge = np.hstack([input, depth_target_col, depth_pred_col, error_map])
+        img_merge = np.hstack([input, depth_target, depth_pred, error_map])
     else:
-        img_merge = np.hstack([input, depth_target_col, depth_pred_col])
+        img_merge = np.hstack([input, depth_target, depth_pred])
 
     return img_merge
 
@@ -341,7 +338,7 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
         "absrel" : result.absrel,
         "lg10" : result.lg10
     }
-    experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
+    experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch, overwrite=True)
 
 
 def log_image_to_comet(input, target, output, epoch, id, experiment, result, prefix, step=None):
@@ -356,7 +353,10 @@ def log_image_to_comet(input, target, output, epoch, id, experiment, result, pre
     log_merged_raw_image_to_comet(raw, epoch, id, experiment, prefix, step)
 
     # Error map
-    error_map = calculate_error_map(target, prediction)
+    error_map = calculate_error_map(target.copy(), prediction.copy())
+
+    # Make better depth visualization
+    prediction, target = visualize_depth_compare(prediction, target)
 
     # Merge rgb, target, prediction, and error map
     img_merge = merge_into_row(input * 255, target, prediction, error_map)
@@ -387,7 +387,7 @@ def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=Non
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
     if step:
         step = int(step)
-    experiment.log_image(img_merge, name=img_name, step=step)
+    experiment.log_image(img_merge, name=img_name, step=step, overwrite=True)
 
 
 def flip_depth(outputs, targets, clip=None):

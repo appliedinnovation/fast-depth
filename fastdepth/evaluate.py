@@ -1,19 +1,18 @@
-from comet_ml import Experiment, ExistingExperiment
-import utils
-from metrics import AverageMeter, Result
-import models
+import argparse
+import csv
 import os
 import sys
 import time
-import csv
-import numpy as np
-import argparse
 
+import numpy as np
+from comet_ml import ExistingExperiment, Experiment
 import torch
-import torch.nn.parallel
-import torch.backends.cudnn as cudnn
-import torch.optim
-cudnn.benchmark = True
+
+sys.path.append(os.getcwd())
+
+import models
+import utils
+from metrics import AverageMeter, Result
 
 try:
     dataset_path = os.environ["DATASETS_ABS_PATH"]
@@ -33,9 +32,9 @@ def main(args):
     params["test_dataset_paths"] = utils.format_dataset_path(
         params["test_dataset_paths"])
 
-    if "experiment_key" in params:
+    if args.existing_experiment:
         experiment = ExistingExperiment(
-            api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=params["experiment_key"])
+            api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=args.existing_experiment)
     else:
         experiment = Experiment(
             api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
@@ -44,15 +43,13 @@ def main(args):
     print("Creating data loaders...")
     if args.nyu:
         from dataloaders.nyu import NYUDataset
-        val_dataset = NYUDataset(args.directory, split='val')
+        val_dataset = NYUDataset(params["test_dataset_paths"], split='val')
     else:
         val_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
                                                 split='val',
                                                 depth_min=params["depth_min"],
                                                 depth_max=params["depth_max"],
-                                                input_shape_model=(224, 224),
-                                                disparity=params["predict_disparity"],
-                                                random_crop=False
+                                                input_shape_model=(224, 224)
                                                 )
 
     # set batch size to be 1 for validation
@@ -108,10 +105,6 @@ def evaluate(params, loader, model, experiment):
                 end = time.time()
                 outputs = model(inputs)
                 gpu_time = time.time() - end
-
-                # Flip to depth if necessary
-                outputs, targets = utils.convert_to_depth(
-                    outputs, targets, not_clipped_yet=True, is_disparity=params["predict_disparity"], clip=1.0 / params["depth_max"])
 
                 result = Result()
                 result.evaluate(outputs.data, targets.data)
