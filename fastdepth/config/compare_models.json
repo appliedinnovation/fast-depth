@@ -1,0 +1,22 @@
+{
+  "dataset_paths": "/data/datasets/unreal_validation_sample_021121",
+  "models": [
+    {
+      "model_path": "/data/repositories/fast-depth/fastdepth/results/af0261a0370e4327bc7d7febaf71c7d7/af0261a0370e4327bc7d7febaf71c7d7_epoch_50.pth",
+      "encoder": "resnet18"
+    },
+    {
+      "model_path": "/data/repositories/fast-depth/fastdepth/results/f7c5274c165745c897cfd7a4df2434f6/f7c5274c165745c897cfd7a4df2434f6_epoch_100.pth",
+      "encoder": "resnet18"
+    },
+    {
+      "model_path": "/data/repositories/fast-depth/fastdepth/results/fa08474663304f99bd97dd2660b82353/fa08474663304f99bd97dd2660b82353_epoch_50.pth",
+      "encoder": "mobilenet"
+    }
+  ],
+  "save_folder": "/data/repositories/fast-depth/model_comparisons/",
+  "depth_min": 0.1,
+  "depth_max": 80,
+  "num_workers": 4,
+  "device": 0
+}

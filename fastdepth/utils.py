@@ -17,28 +17,50 @@ sys.path.append(os.getcwd())
 
 cmap = plt.cm.viridis
 
+
 def raw_to_numpy(path, height, width, channels):
-    return np.fromfile(path, np.dtype(('f4', channels)), height * width).reshape(height, width, channels)    
+    return np.fromfile(path, np.dtype(('f4', channels)),
+                       height * width).reshape(height, width, channels)
+
 
 def parse_command():
-    data_names = ['nyudepthv2',
-                  'unreal']
+    data_names = ['nyudepthv2', 'unreal']
 
     import argparse
     parser = argparse.ArgumentParser(description='FastDepth')
-    parser.add_argument('--data', metavar='DATA', default='nyudepthv2',
+    parser.add_argument('--data',
+                        metavar='DATA',
+                        default='nyudepthv2',
                         choices=data_names,
-                        help='dataset: ' + ' | '.join(data_names) + ' (default: nyudepthv2)')
-    parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
+                        help='dataset: ' + ' | '.join(data_names) +
+                        ' (default: nyudepthv2)')
+    parser.add_argument('-j',
+                        '--workers',
+                        default=16,
+                        type=int,
+                        metavar='N',
                         help='number of data loading workers (default: 16)')
-    parser.add_argument('--print-freq', '-p', default=50, type=int,
-                        metavar='N', help='print frequency (default: 50)')
-    parser.add_argument('--gpu', default='0', type=str,
-                        metavar='N', help="gpu id")
-    parser.add_argument('--resume', type=str, default=None,
+    parser.add_argument('--print-freq',
+                        '-p',
+                        default=50,
+                        type=int,
+                        metavar='N',
+                        help='print frequency (default: 50)')
+    parser.add_argument('--gpu',
+                        default='0',
+                        type=str,
+                        metavar='N',
+                        help="gpu id")
+    parser.add_argument('--resume',
+                        type=str,
+                        default=None,
                         help="Path to model checkpoint to resume training.")
-    parser.add_argument('-n', '--num_photos_saved', type=int, default=1,
-                        help="Number of comparison photos to save during evaluation.")
+    parser.add_argument(
+        '-n',
+        '--num_photos_saved',
+        type=int,
+        default=1,
+        help="Number of comparison photos to save during evaluation.")
     parser.set_defaults(cuda=True)
 
     args = parser.parse_args()
@@ -59,7 +81,7 @@ def normalize_new_range(input):
     _mean, _std = (np.mean(input), np.std(input))
     _min = np.min(input)
     _max = np.max(input)
-    
+
     newMax = _mean + 2 * _std
     newMin = _mean - 2 * _std
     if newMax < _max:
@@ -68,7 +90,7 @@ def normalize_new_range(input):
         _min = newMin
     input[input > _max] = _max
     input[input < _min] = _min
-    _range = _max-_min
+    _range = _max - _min
     input -= _min
     input /= _range
 
@@ -78,7 +100,7 @@ def normalize_new_range(input):
 def visualize_depth(depth, far_clip=None):
     if far_clip:
         depth[depth > far_clip] = far_clip
-    
+
     depth = normalize_new_range(depth)
     depth = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 
@@ -91,27 +113,55 @@ def visualize_depth(depth, far_clip=None):
     return depth
 
 
-def visualize_depth_compare(depth, target):
-    _min = min(np.min(target), np.min(depth))
-    _max = max(np.max(target), np.max(depth))
+def visualize_depth_compare(depths, target):
+    if not isinstance(depths, list):
+        depths = [depths]
 
-    _range = _max-_min
-    if _range:
+    _min = min(*[np.min(depth) for depth in depths], np.min(target))
+    _max = max(*[np.max(depth) for depth in depths], np.max(target))
+
+    range = _max - _min
+    colorized_depths = []
+    for depth in depths:
         depth -= _min
-        depth /= _range
-        target -= _min
-        target /= _range
-
-    # Convert to bgr
-    depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
+        depth /= range
+        depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
+        depth = np.array(depth * 255, dtype=np.uint8)
+        depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
+        colorized_depths.append(depth)
+    
+    target -= _min
+    target /= range
     target = cv2.cvtColor(target, cv2.COLOR_GRAY2BGR)
-
-    # Color mapping for better visibility / contrast
-    depth = np.array(depth * 255, dtype=np.uint8)
-    depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
     target = np.array(target * 255, dtype=np.uint8)
     target = cv2.applyColorMap(target, cv2.COLORMAP_TURBO)
-    return depth, target
+
+    if len(colorized_depths) == 1:
+        colorized_depths = colorized_depths[0]
+    return colorized_depths, target
+
+
+# def visualize_depth_compare(depth, target):
+#     _min = min(np.min(target), np.min(depth))
+#     _max = max(np.max(target), np.max(depth))
+
+#     _range = _max - _min
+#     if _range:
+#         depth -= _min
+#         depth /= _range
+#         target -= _min
+#         target /= _range
+
+#     # Convert to bgr
+#     depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
+#     target = cv2.cvtColor(target, cv2.COLOR_GRAY2BGR)
+
+#     # Color mapping for better visibility / contrast
+#     depth = np.array(depth * 255, dtype=np.uint8)
+#     depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
+#     target = np.array(target * 255, dtype=np.uint8)
+#     target = cv2.applyColorMap(target, cv2.COLORMAP_TURBO)
+#     return depth, target
 
 
 def tensor_to_rgb(input):
@@ -120,16 +170,6 @@ def tensor_to_rgb(input):
 
 def tensor_to_depth(input):
     return np.squeeze(input.detach().cpu().numpy())
-
-
-def merge_into_row(input, depth_target, depth_pred, error_map=None):
-    if error_map is not None:
-        error_map = cv2.cvtColor(error_map, cv2.COLOR_BGR2RGB)
-        img_merge = np.hstack([input, depth_target, depth_pred, error_map])
-    else:
-        img_merge = np.hstack([input, depth_target, depth_pred])
-
-    return img_merge
 
 
 # Inputs are np arrays
@@ -141,7 +181,8 @@ def calculate_error_map(target, prediction):
     prediction[prediction > 25] = 25
     error_map = np.abs(prediction - target)
     error_map = normalize_new_range(error_map)
-    error_map = cv2.normalize(error_map, error_map, 0, 255.0, cv2.NORM_MINMAX, cv2.CV_8U)
+    error_map = cv2.normalize(error_map, error_map, 0, 255.0, cv2.NORM_MINMAX,
+                              cv2.CV_8U)
     error_map = cv2.cvtColor(error_map, cv2.COLOR_GRAY2BGR)
     error_map = cv2.applyColorMap(error_map, cv2.COLORMAP_HOT)
     return error_map
@@ -160,12 +201,12 @@ def write_results(img, results):
     rmse = "RMSE: {:.2f}m".format(results.rmse)
     mae = "MAE: {:.2f}m".format(results.mae)
     delta1 = "Delta1: {:.2f}m".format(results.delta1)
-    cv2.putText(out, rmse, (out.shape[1] - blank.shape[1], 30),
-                font, 1, (255, 255, 255), 1)
-    cv2.putText(out, mae, (out.shape[1] - blank.shape[1], 60),
-                font, 1, (255, 255, 255), 1)
-    cv2.putText(out, delta1, (out.shape[1] - blank.shape[1], 90),
-                font, 1, (255, 255, 255), 1)
+    cv2.putText(out, rmse, (out.shape[1] - blank.shape[1], 30), font, 1,
+                (255, 255, 255), 1)
+    cv2.putText(out, mae, (out.shape[1] - blank.shape[1], 60), font, 1,
+                (255, 255, 255), 1)
+    cv2.putText(out, delta1, (out.shape[1] - blank.shape[1], 90), font, 1,
+                (255, 255, 255), 1)
 
     return out
 
@@ -184,9 +225,7 @@ def load_config_file(file):
 
 def format_dataset_path(dataset_paths):
     if isinstance(dataset_paths, str):
-        dataset_paths = {
-            dataset_paths
-        }
+        dataset_paths = {dataset_paths}
     elif isinstance(dataset_paths, list):
         data_paths = set()
         for path in dataset_paths:
@@ -205,8 +244,8 @@ def make_dir_with_date(root_dir, prefix):
     except KeyError:
         pass
 
-    date_dir = os.path.join(root_dir, prefix + "_" +
-                            time.strftime("%m_%d_%H_%M"))
+    date_dir = os.path.join(root_dir,
+                            prefix + "_" + time.strftime("%m_%d_%H_%M"))
     if pid:
         date_dir += "_opt_{}".format(pid)
 
@@ -216,63 +255,66 @@ def make_dir_with_date(root_dir, prefix):
 
 
 def get_train_val_split_lengths(train_val_split, dataset_length):
-    return [int(np.around(train_val_split[0] * 0.01 * dataset_length)),
-            int(np.around(train_val_split[1] * 0.01 * dataset_length))]
+    return [
+        int(np.around(train_val_split[0] * 0.01 * dataset_length)),
+        int(np.around(train_val_split[1] * 0.01 * dataset_length))
+    ]
 
 
-def load_model(params, resume=None):
+def load_model(params, checkpoint=None, device=None):
+    if params["encoder"] == "mobilenet":
+        model = models.MobileNetSkipAdd(output_size=(224, 224),
+                                        pretrained=True)
+    elif params["encoder"] == "resnet50":
+        model = models.ResNetSkipAdd(layers=50,
+                                     output_size=(224, 224),
+                                     pretrained=True)
+    elif params["encoder"] == "resnet18":
+        model = models.ResNetSkipAdd(layers=18,
+                                     output_size=(224, 224),
+                                     pretrained=True)
+    else:
+        model = models.MobileNetSkipAdd(output_size=(224, 224),
+                                        pretrained=True)
+
     # Load model checkpoint if specified
     model_state_dict,\
         optimizer_state_dict,\
-        params["start_epoch"], _ = load_checkpoint(resume)
+        params["start_epoch"] = load_checkpoint(checkpoint, device)
     model_state_dict = convert_state_dict_from_gpu(model_state_dict)
-
-    # Load the model
-    if params["encoder"] == "mobilenet":
-        model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
-    elif params["encoder"] == "resnet50":
-        model = models.ResNetSkipAdd(layers=50, output_size=(224, 224), pretrained=True)
-    elif params["encoder"] == "resnet18":
-        model = models.ResNetSkipAdd(layers=18, output_size=(224, 224), pretrained=True)
-    else:
-        model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
     if model_state_dict:
         model.load_state_dict(model_state_dict)
 
     return model, optimizer_state_dict
 
 
-def load_checkpoint(model_path):
+def load_checkpoint(model_path, device):
     if model_path and os.path.isfile(model_path):
         print("=> loading checkpoint '{}'".format(model_path))
 
-        checkpoint = torch.load(model_path)
+        checkpoint = torch.load(model_path, map_location=device)
         model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
         start_epoch = checkpoint['epoch']
-        best_loss = checkpoint['best_result']
 
-        print("=> loaded checkpoint '{}' (epoch {})"
-              .format(model_path, checkpoint['epoch']))
+        print("=> loaded checkpoint '{}' (epoch {})".format(
+            model_path, checkpoint['epoch']))
 
     else:
         model_state_dict = None
         optimizer_state_dict = None
         start_epoch = 0
-        best_loss = 100000  # Very high number
-
         if model_path:
             print("=> no checkpoint found at '{}'".format(model_path))
 
     return model_state_dict,\
         optimizer_state_dict,\
-        start_epoch,\
-        best_loss,\
+        start_epoch
 
 
 def get_save_path(epoch, save_dir="./results"):
-    save_path = os.path.join(
-        save_dir, "model_{}.pth".format(str(epoch).zfill(4)))
+    save_path = os.path.join(save_dir,
+                             "model_{}.pth".format(str(epoch).zfill(4)))
     return save_path
 
 
@@ -285,12 +327,13 @@ def save_model(model, optimizer, save_path, epoch, loss, max_checkpoints=None):
             os.remove(os.path.join(checkpoint_dir, checkpoints[0]))
             checkpoints.pop(0)
 
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "epoch": epoch,
-        "best_result": loss
-    }, save_path)
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "epoch": epoch,
+            "best_result": loss
+        }, save_path)
 
 
 def optimizer_to_gpu(optimizer):
@@ -325,23 +368,39 @@ def save_losses_plot(path, num_epochs, losses, title):
     plt.savefig(path, bbox_inches="tight")
 
 
-def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=None):
+def log_comet_metrics(experiment,
+                      result,
+                      loss,
+                      prefix=None,
+                      step=None,
+                      epoch=None):
     metrics = {
         "loss": loss,
         "rmse": result.rmse,
-        "irmse" : result.irmse,
+        "irmse": result.irmse,
         "mae": result.mae,
-        "imae" : result.imae,
+        "imae": result.imae,
         "delta1": result.delta1,
-        "delta2" : result.delta2,
-        "delta3" : result.delta3,
-        "absrel" : result.absrel,
-        "lg10" : result.lg10
+        "delta2": result.delta2,
+        "delta3": result.delta3,
+        "absrel": result.absrel,
+        "lg10": result.lg10
     }
-    experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch, overwrite=True)
+    experiment.log_metrics(metrics,
+                           prefix=prefix,
+                           step=step,
+                           epoch=epoch)
 
 
-def log_image_to_comet(input, target, output, epoch, id, experiment, result, prefix, step=None):
+def log_image_to_comet(input,
+                       target,
+                       output,
+                       epoch,
+                       id,
+                       experiment,
+                       result,
+                       prefix,
+                       step=None):
     # Convert to np arrays
     input = tensor_to_rgb(input)
     target = tensor_to_depth(target)
@@ -354,16 +413,17 @@ def log_image_to_comet(input, target, output, epoch, id, experiment, result, pre
 
     # Error map
     error_map = calculate_error_map(target.copy(), prediction.copy())
+    error_map = cv2.cvtColor(error_map, cv2.COLOR_BGR2RGB)
 
     # Make better depth visualization
     prediction, target = visualize_depth_compare(prediction, target)
 
     # Merge rgb, target, prediction, and error map
-    img_merge = merge_into_row(input * 255, target, prediction, error_map)
-    img_merge = write_results(img_merge, result)
-    log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
+    combined = np.hstack([input * 255, target, prediction, error_map])
+    combined = write_results(combined, result)
+    log_merged_image_to_comet(combined, epoch, id, experiment, prefix, step)
 
-    return img_merge
+    return combined
 
 
 def stack_images(input, target, output):
@@ -372,10 +432,15 @@ def stack_images(input, target, output):
 
 
 def create_raw_image(image):
-    return image.tobytes()    
+    return image.tobytes()
 
 
-def log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step=None):
+def log_merged_raw_image_to_comet(raw_image,
+                                  epoch,
+                                  id,
+                                  experiment,
+                                  prefix,
+                                  step=None):
     file_name = "{}_epoch_{}_id_{}.raw".format(prefix, epoch, id)
     if step:
         step = int(step)
@@ -383,7 +448,12 @@ def log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step
     experiment.log_asset_data(raw_image, name=file_name, step=step)
 
 
-def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
+def log_merged_image_to_comet(img_merge,
+                              epoch,
+                              id,
+                              experiment,
+                              prefix,
+                              step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
     if step:
         step = int(step)
@@ -398,7 +468,12 @@ def flip_depth(outputs, targets, clip=None):
     return outputs, targets
 
 
-def process_for_loss(outputs, targets, predict_disparity, loss_disparity, disparity_constant, clip=0.1):
+def process_for_loss(outputs,
+                     targets,
+                     predict_disparity,
+                     loss_disparity,
+                     disparity_constant,
+                     clip=0.1):
     c = disparity_constant if loss_disparity else 1
     if predict_disparity != loss_disparity:
         outputs, targets = flip_depth(outputs, targets, clip)
@@ -406,7 +481,11 @@ def process_for_loss(outputs, targets, predict_disparity, loss_disparity, dispar
     return outputs, targets, c
 
 
-def convert_to_depth(outputs, targets, not_clipped_yet, is_disparity, clip=None):
+def convert_to_depth(outputs,
+                     targets,
+                     not_clipped_yet,
+                     is_disparity,
+                     clip=None):
     clip = clip if not_clipped_yet else None
     if is_disparity:
         outputs, targets = flip_depth(outputs, targets, clip)

@@ -16,9 +16,9 @@ from metrics import AverageMeter, Result
 
 try:
     dataset_path = os.environ["DATASETS_ABS_PATH"]
+    sys.path.append(dataset_path)
 except KeyError:
     print("Datasets.py absolute path not found in PATH")
-sys.path.append(dataset_path)
 import Datasets
 
 

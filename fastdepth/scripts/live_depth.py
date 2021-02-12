@@ -24,7 +24,7 @@ args = parser.parse_args()
 
 model_path = args.model
 
-model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
+model_state_dict, _, _ = utils.load_checkpoint(args.model)
 model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
 model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
 if model_state_dict:

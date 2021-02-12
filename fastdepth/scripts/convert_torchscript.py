@@ -20,7 +20,7 @@ if args.nyu:
     checkpoint = torch.load(args.model)
     model = checkpoint['model']
 else:
-    model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
+    model_state_dict, _, _ = utils.load_checkpoint(args.model)
     model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
     if args.resnet18:
         model = models.ResNetSkipAdd(layers=18, output_size=(224, 224), pretrained=True)

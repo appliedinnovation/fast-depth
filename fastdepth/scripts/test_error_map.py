@@ -31,7 +31,7 @@ depth = depth[:, :, 0]
 depth[depth > 80] = 80
 
 device = torch.device("cuda:0")
-model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
+model_state_dict, _, _ = utils.load_checkpoint(args.model)
 model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
 if args.resnet18:
     model = models.ResNetSkipAdd(
