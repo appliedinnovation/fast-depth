@@ -129,7 +129,7 @@ def visualize_depth_compare(depths, target):
         depth = np.array(depth * 255, dtype=np.uint8)
         depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
         colorized_depths.append(depth)
-    
+
     target -= _min
     target /= range
     target = cv2.cvtColor(target, cv2.COLOR_GRAY2BGR)
@@ -312,10 +312,14 @@ def load_checkpoint(model_path, device):
         start_epoch
 
 
-def get_save_path(epoch, save_dir="./results"):
-    save_path = os.path.join(save_dir,
-                             "model_{}.pth".format(str(epoch).zfill(4)))
-    return save_path
+def get_model_save_path(epoch, save_dir="./results", experiment=None):
+    if experiment:
+        prefix = experiment.get_key()
+    else:
+        prefix = "model"
+
+    return os.path.join(save_dir, "{}_{}.pth".format(prefix,
+                                                     str(epoch).zfill(4)))
 
 
 def save_model(model, optimizer, save_path, epoch, loss, max_checkpoints=None):
@@ -386,10 +390,7 @@ def log_comet_metrics(experiment,
         "absrel": result.absrel,
         "lg10": result.lg10
     }
-    experiment.log_metrics(metrics,
-                           prefix=prefix,
-                           step=step,
-                           epoch=epoch)
+    experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 
 
 def log_image_to_comet(input,

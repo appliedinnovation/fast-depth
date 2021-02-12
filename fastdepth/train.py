@@ -118,6 +118,11 @@ def set_up_experiment(params, experiment, resume=None):
     else:
         params["experiment_dir"] = utils.make_dir_with_date(
             params["experiment_dir"], "fastdepth")  # New folder
+    
+    # Save test images
+    params["image_dir"] = os.path.join(params["experiment_dir"], "images")
+    if not os.path.exists(params["image_dir"]):
+        os.makedirs(params["image_dir"])
 
     ## --------------- Model --------------- ##
     model, optimizer_state_dict = utils.load_model(params, resume)
@@ -334,8 +339,8 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
             # Save periodically
             if (current_epoch + 1) % params["save_frequency"] == 0:
-                save_path = utils.get_save_path(
-                    current_epoch, params["experiment_dir"])
+                save_path = utils.get_model_save_path(
+                    current_epoch, params["experiment_dir"], experiment)
                 utils.save_model(model, optimizer, save_path, current_epoch,
                                     mean_val_loss, params["max_checkpoints"])
                 experiment.log_model(save_path.split("/")[-1], save_path)
@@ -345,8 +350,8 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
             scheduler.step()
 
         # Save the final model
-        save_path = utils.get_save_path(
-            params["num_epochs"], params["experiment_dir"])
+        save_path = utils.get_model_save_path(
+            params["num_epochs"], params["experiment_dir"], experiment)
         utils.save_model(model, optimizer, save_path, current_epoch,
                          mean_val_loss, params["max_checkpoints"])
         experiment.log_model(save_path.split("/")[-1], save_path)
@@ -354,8 +359,8 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
     except KeyboardInterrupt:
         print("Saving model and quitting...")
-        save_path = utils.get_save_path(
-            current_epoch, params["experiment_dir"])
+        save_path = utils.get_model_save_path(
+            current_epoch, params["experiment_dir"], experiment)
         utils.save_model(model, optimizer, save_path, current_epoch,
                          mean_val_loss, params["max_checkpoints"])
         experiment.log_model(save_path.split("/")[-1], save_path)

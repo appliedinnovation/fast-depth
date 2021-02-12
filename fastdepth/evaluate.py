@@ -79,9 +79,11 @@ def main(args):
 
     # Create output directory
     output_directory = os.path.join(os.path.dirname(args.model), "images")
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)
     params["experiment_dir"] = output_directory
+    params["image_dir"] = os.path.join(output_directory, "images")
+    if not os.path.exists(params["image_dir"]):
+        os.makedirs(params["image_dir"])
+    
     print("Saving results to " + output_directory)
 
     evaluate(params, val_loader, model, experiment)
@@ -117,8 +119,8 @@ def evaluate(params, loader, model, experiment):
                         inputs[0], targets[0], outputs[0], 
                         epoch=0, id=i, experiment=experiment, result=result, prefix="test")
                     if params["save_test_images"]:
-                        filename = os.path.join(params["experiment_dir"],
-                                                "comparison_epoch_{}_{}.png".format(str(params["start_epoch"]), np.where(img_idxs == i)[0][0]))
+                        filename = os.path.join(params["image_dir"],
+                                                "image_{}.png".format(np.where(img_idxs == i)[0][0]))
                         utils.save_image(img_merged, filename)
 
                 if (i + 1) % params["stats_frequency"] == 0 and i != 0:
