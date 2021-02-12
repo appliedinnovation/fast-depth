@@ -1,0 +1,11 @@
+{
+    "test_dataset_paths" : "/data/datasets/unreal_validation_sample_021121",
+    "encoder" : "mobilenet",
+    "depth_min" : 0.1,
+    "depth_max" : 80,
+    "num_workers" : 4,
+    "device" : 0,
+    "save_test_images" : true,
+    "save_test_metrics" : true,
+    "stats_frequency" : 5
+}

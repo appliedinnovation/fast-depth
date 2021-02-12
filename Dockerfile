@@ -33,3 +33,7 @@ RUN python3 -m pip install --upgrade pip && DEBIAN_FRONTEND=noninteractive pytho
     opencv-contrib-python \ 
     kornia
 
+# NOTE: To train within docker, it is essential to add the --ipc=host flag when creating a container.
+# This is because PyTorch uses shared memory to share data between processes, so if torch multiprocessing
+# is used, the default shared memory segment size in the container isn't enough.
+
