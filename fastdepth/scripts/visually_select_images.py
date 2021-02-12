@@ -2,12 +2,14 @@ import argparse
 import glob
 import os
 import sys
+from shutil import move
 
 import cv2
 import numpy as np
 
 sys.path.append(os.getcwd())
 import utils
+
 '''
 Assumptions:
     - Data can be stored recursively in source folder.
@@ -18,10 +20,11 @@ Assumptions:
 
 parser = argparse.ArgumentParser(
     description='View raw images and depths stored in a folder')
-parser.add_argument('-d',
+parser.add_argument('-s', '--src',
                     type=str,
                     required=True,
-                    help='Folder to copy images from.')
+                    help='Folder to move images from.')
+parser.add_argument('-d', '--dst', type=str, required=True, help="Folder to move images to.")
 parser.add_argument('--height', type=int, default=384, help='Image height.')
 parser.add_argument('--width', type=int, default=672, help='Image width.')
 parser.add_argument('--channels', type=int, default=4, help='Image channels.')
@@ -31,17 +34,20 @@ parser.add_argument('--max-depth',
                     help="Maximum depth for visualization.")
 args = parser.parse_args()
 
+if not os.path.exists(args.dst):
+    os.makedirs(args.dst)
+
 # Recursively list all data files
-src_files = glob.glob(os.path.join(args.d, "**/*.raw"), recursive=True)
+src_files = glob.glob(os.path.join(args.src, "**/*.raw"), recursive=True)
 
 # Pair images and depths
 paired_files = {}
 for f in src_files:
 
     # Remove top-level source directory
-    # relative_file_path = f.split(args.d)[-1]
+    relative_file_path = f.split(args.src)[-1]
     name = f.split("/")[-1]
-    parent = f.split(args.d)[-1].split(name)[0]
+    parent = f.split(args.src)[-1].split(name)[0]
 
     # Extract camera id and image number
     idx = name.split("_")[-1].split(".raw")[0]
@@ -54,14 +60,19 @@ for f in src_files:
 
     # Add image and depth to pair
     if "depth_motion" in name:
-        paired_files[parent_camera]["depth"] = f
+        paired_files[parent_camera]["depth"] = relative_file_path
     elif "depthFlow" not in name:
-        paired_files[parent_camera]["image"] = f
+        paired_files[parent_camera]["image"] = relative_file_path
 
 for data in paired_files.values():
-    image = utils.raw_to_numpy(data["image"], args.height, args.width,
+    isrc = os.path.join(args.src, data["image"])
+    idst = os.path.join(args.dst, data["image"])
+    dsrc = os.path.join(args.src, data["depth"])
+    ddst = os.path.join(args.dst, data["depth"])
+
+    image = utils.raw_to_numpy(isrc, args.height, args.width,
                                args.channels)[:, :, 0:3]
-    depth = utils.raw_to_numpy(data["depth"], args.height, args.width,
+    depth = utils.raw_to_numpy(dsrc, args.height, args.width,
                                args.channels)[:, :, 0]
 
     image = cv2.normalize(image,
@@ -80,4 +91,14 @@ for data in paired_files.values():
         os.remove(data["image"])
         os.remove(data["depth"])
         print("Removing {}\{}".format(data["image"], data["depth"]))
+    elif k == ord('q'):
+        cv2.destroyAllWindows()
+        break
+    elif k == ord('m'):
+        dst_file_parent = idst.rpartition('/')[0]
+        if not os.path.exists(dst_file_parent):
+            os.makedirs(dst_file_parent, exist_ok=True)
+        move(isrc, idst)
+        move(dsrc, ddst)
+
     cv2.destroyAllWindows()
