@@ -60,9 +60,15 @@ def main(args):
                                              num_workers=params["num_workers"],
                                              pin_memory=True)
 
+    # Set GPU
+    params["device"] = torch.device(
+        "cuda:{}".format(params["device"])
+        if params["device"] >= 0 and torch.cuda.is_available() else "cpu")
+    print("Using device", params["device"])
+
     print("Loading model '{}'".format(args.model))
     if not params["nyu"]:
-        model, _ = utils.load_model(params, args.model)
+        model, _ = utils.load_model(params, args.model, params["device"])
     else:
         # Maintain compatibility for fastdepth NYU model format
         state_dict = torch.load(args.model, map_location=params["device"])
@@ -70,12 +76,6 @@ def main(args):
                                         pretrained=True)
         model.load_state_dict(state_dict)
         params["start_epoch"] = 0
-
-    # Set GPU
-    params["device"] = torch.device(
-        "cuda:{}".format(params["device"])
-        if params["device"] >= 0 and torch.cuda.is_available() else "cpu")
-    print("Using device", params["device"])
 
     model.to(params["device"])
 
